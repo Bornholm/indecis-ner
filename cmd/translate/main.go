@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -54,6 +55,8 @@ func main() {
 	concurrency := flag.Int("concurrency", 2, "simultaneous calls")
 	interval := flag.Duration("interval", 5*time.Second, "minimum time between two calls")
 	limit := flag.Int("limit", 0, "translate only the first documents (0: all)")
+	sample := flag.Int("sample", 0, "translate this many documents drawn at random (0: all)")
+	seed := flag.Int64("seed", 1, "seed of -sample")
 	flag.Parse()
 
 	b, err := os.ReadFile(*in)
@@ -63,6 +66,11 @@ func main() {
 	var docs []document
 	if err := json.Unmarshal(b, &docs); err != nil {
 		log.Fatal(err)
+	}
+	if *sample > 0 && *sample < len(docs) {
+		rng := rand.New(rand.NewSource(*seed))
+		rng.Shuffle(len(docs), func(i, j int) { docs[i], docs[j] = docs[j], docs[i] })
+		docs = docs[:*sample]
 	}
 	if *limit > 0 && *limit < len(docs) {
 		docs = docs[:*limit]
