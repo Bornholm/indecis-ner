@@ -30,6 +30,7 @@ func main() {
 	lr := flag.Float64("lr", 1e-4, "encoder learning rate")
 	headLR := flag.Float64("head-lr", 1e-3, "head learning rate")
 	seed := flag.Int64("seed", 1, "seed")
+	task := flag.String("task", "wikiner", `schema: "wikiner" (PER, LOC, ORG, MISC) or "tab" (TAB types and masking)`)
 	group := flag.Float64("group", 0, "share of the sentences joined into texts of 2 to 8 sentences, so that windows hold several")
 	out := flag.String("out", "", "model directory (required)")
 	flag.Parse()
@@ -58,7 +59,18 @@ func main() {
 		log.Fatal(err)
 	}
 
-	schema := indecis.Schema{indecis.NewSpans("entities", "Named entities: people, places, organizations, other proper names", "PER", "LOC", "ORG", "MISC")}
+	var schema indecis.Schema
+	switch *task {
+	case "wikiner":
+		schema = indecis.Schema{indecis.NewSpans("entities", "Named entities: people, places, organizations, other proper names", "PER", "LOC", "ORG", "MISC")}
+	case "tab":
+		schema = indecis.Schema{
+			indecis.NewSpans("entities", "Entities that may describe a person (TAB types)", "PERSON", "CODE", "LOC", "ORG", "DEM", "DATETIME", "QUANTITY", "MISC"),
+			indecis.NewSpans("mask", "Passages to mask: direct identifiers and quasi-identifiers of the person to protect", "DIRECT", "QUASI"),
+		}
+	default:
+		log.Fatalf("unknown task %q", *task)
+	}
 	m, err := indecis.New(*backbone, schema, *seed, indecis.WithMaxLen(*maxLen))
 	if err != nil {
 		log.Fatal(err)
