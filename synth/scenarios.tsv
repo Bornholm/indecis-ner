@@ -1,0 +1,51 @@
+# split	genre	situation
+train	courriel	Une salariée prévient sa responsable qu'elle sera absente pour accompagner son fils à une consultation à l'hôpital, et réorganise son planning.
+train	courriel	Un manager demande aux RH comment gérer le retour d'un collaborateur après un long arrêt pour dépression.
+train	courriel	Échange entre deux collègues sur le pot de départ à la retraite d'une aide-soignante, avec détails de sa carrière.
+train	courriel	Une gestionnaire de paie signale une erreur sur le bulletin d'un salarié et donne les montants concernés.
+train	courriel	Un salarié demande un aménagement d'horaires pour suivre des séances de chimiothérapie.
+train	courriel	La DRH annonce en interne la nomination d'une nouvelle cheffe de service, avec son parcours.
+train	courriel	Un salarié conteste le refus de ses congés et rappelle sa situation familiale.
+train	courriel	Une élue du CSE relaie la plainte d'un collègue sur ses conditions de travail de nuit.
+train	courriel	Un recruteur transmet à un manager le profil d'une candidate, avec son parcours et ses prétentions salariales.
+train	courriel	Un salarié informe son employeur de sa reconnaissance de travailleur handicapé et demande un poste adapté.
+train	courriel	Une assistante organise la visite médicale de reprise d'un technicien après un accident de travail.
+train	courriel	Un chef d'équipe signale qu'un intérimaire est arrivé en état d'ébriété sur le chantier.
+train	courriel	Une salariée annonce sa grossesse à sa manager et parle de son futur congé maternité.
+train	courriel	Un délégué syndical demande la liste des salariés concernés par un plan de départs volontaires.
+train	compte rendu	Compte rendu d'entretien annuel d'une infirmière, avec ses souhaits de mobilité et ses contraintes personnelles.
+train	compte rendu	Compte rendu de réunion d'équipe où l'on évoque l'absence prolongée d'un collègue et sa cause.
+train	compte rendu	Compte rendu d'entretien professionnel d'un cariste qui souhaite passer chef d'équipe.
+train	compte rendu	Compte rendu d'une réunion du CSE sur un projet de réorganisation, avec les interventions nominatives des élus.
+train	compte rendu	Compte rendu d'entretien de recrutement d'un comptable, avec son parcours et sa situation.
+train	compte rendu	Compte rendu de visite du médecin du travail dans un atelier, avec des situations individuelles.
+train	note	Note de la direction sur le remplacement d'une directrice d'école partie en congé longue maladie.
+train	note	Note interne sur la mutation d'un agent vers une autre agence, à sa demande, pour raisons familiales.
+train	note	Note de service sur un salarié sanctionné pour des retards répétés.
+train	note	Note RH récapitulant les éléments variables de paie du mois pour trois salariés.
+train	lettre	Lettre d'un employeur notifiant un avertissement à un salarié pour un incident avec un client.
+train	lettre	Lettre de démission d'une serveuse qui explique ses raisons.
+train	lettre	Lettre de recommandation d'un ancien employeur pour un électricien.
+train	lettre	Lettre d'un salarié à sa mutuelle pour contester un remboursement de soins.
+train	lettre	Lettre d'un employeur proposant un reclassement à un salarié déclaré inapte.
+train	lettre	Lettre de convocation à un entretien préalable à un licenciement pour motif économique.
+train	certificat	Certificat médical d'un médecin généraliste attestant une contre-indication au port de charges.
+train	certificat	Attestation de l'employeur pour la demande de logement social d'une salariée.
+train	formulaire	Fiche de renseignements remplie par un nouvel embauché : identité, adresse, contacts d'urgence, situation familiale.
+train	formulaire	Demande de formation remplie par une salariée, avec son parcours et ses motivations.
+train	formulaire	Déclaration d'accident du travail remplie par l'employeur, avec les circonstances.
+train	formulaire	Demande de congé parental d'éducation.
+train	message	Fil de messages d'une messagerie interne entre trois collègues qui organisent le remplacement d'une collègue hospitalisée.
+train	message	Message vocal retranscrit d'un salarié qui prévient de son absence.
+train	rapport	Rapport mensuel d'un responsable logistique mentionnant des absences et des incidents individuels.
+train	rapport	Rapport d'une assistante sociale du travail sur la situation d'un salarié en difficulté financière.
+test	rapport	Rapport d'enquête interne après un accident du travail grave, avec témoignages nominatifs.
+test	signalement	Signalement écrit de faits de harcèlement moral par une salariée à la direction.
+test	lettre	Convention de rupture conventionnelle entre un employeur et une salariée.
+test	attestation	Attestation d'un collègue destinée au conseil de prud'hommes dans un litige de licenciement.
+test	courriel	Échange entre la médecine du travail et les RH sur l'aménagement de poste d'un salarié diabétique.
+test	compte rendu	Compte rendu de la commission d'attribution des aides sociales du CSE, avec les situations des demandeurs.
+test	note	Note de la direction sur la gestion d'un conflit entre deux salariés de confessions différentes.
+test	formulaire	Dossier de demande de mutation d'un fonctionnaire hospitalier, avec ses motifs.
+test	message	Conversation de messagerie entre une manager et un salarié en arrêt qui l'informe de son état.
+test	rapport	Bilan de fin de période d'essai d'une alternante, avec appréciations détaillées.
