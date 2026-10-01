@@ -4,7 +4,7 @@ GAZ := $(HOME)/.cache/go-anon/models
 CRF_FLAGS := -crf $(GOANON)/models/model_fr_pruned.crf.gz \
 	-gazetteers firstnames:$(GAZ)/firstnames.txt,locations:$(GAZ)/locations.txt \
 	-clusters $(GOANON)/data/fr/brown_clusters_fr.txt
-MODEL ?= runs/a8m-full
+MODEL ?= runs/a8m-group
 
 .PHONY: build data train compare compare-docs ceiling test
 
@@ -16,7 +16,7 @@ data: build
 	./bin/prepare -data $(GOANON)/data/fr -out data
 
 train: build
-	./bin/train -epochs 2 -out $(MODEL)
+	./bin/train -epochs 2 -group 0.5 -out $(MODEL)
 
 # Both engines on the clean test, then on the whole test (contaminated
 # for the CRF, comparable to go-anon's published scores).
