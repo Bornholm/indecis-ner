@@ -87,6 +87,24 @@ Adding 195 training rulings translated the same way (a random sample of 200, 5 l
 
 ORG and DEM are token recalls. A fifth of the training set in French halves the gap with English (quasi-identifiers: 5.7 points down to 2.7) and costs English nothing. On the whole English test set (all annotators), the model scores 0.938 recall, 0.993 direct, 0.931 quasi, 0.762 precision.
 
+## Workplace documents
+
+`GUIDELINES.md` adapts TAB's rules to French workplace documents: every natural person is protected, and a third Spans question, `sensitive`, flags the special categories of articles 9 and 10 GDPR (health, union, beliefs, politics, origin, sexuality, offences). `synth` writes documents labeled by construction from templates (`synth/templates`), reusing go-anon's value generators for identities, organisations, addresses and identifiers: payslip, employment contract, prescription, sick note, absence email, disciplinary letter, appraisal, staff representative's email, and, kept for testing only, fitness certificate and work certificate.
+
+`runs/work-a8m` trains the three questions on TAB, its 195 French rulings and 2,000 synthetic documents (`-task work`, about 1h45). Masking, int8, any decision (`compare -question mask -merge`):
+
+| Synthetic test, 200 documents | Exact recall | Precision | Lenient recall |
+| --- | --- | --- | --- |
+| Templates seen in training, TAB model | 0.569 | 0.344 | 0.918 |
+| Templates seen in training, work model | 0.999 | 0.998 | 1.000 |
+| Templates never seen, TAB model | 0.527 | 0.310 | 0.880 |
+| Templates never seen, work model | 0.850 | 0.514 | 0.985 |
+
+- On seen templates the model has learned the templates: that score measures memory, not generalization.
+- On the two unseen templates, nearly every passage to mask is touched (0.985). Most exact misses are conventions, not leaks: "Mme Martin Chloé (Née Marchand)" masked as two passages, a company name masked without its legal form, a home address marked QUASI where the guidelines say DIRECT. The lost precision is partly masks the guidelines do not ask for (the employer's address and SIRET, "Médecin du travail"), partly noise (a lone "(", "Apte").
+- Special categories do not generalize: on unseen templates, HEALTH recall is 0.27 for 0.08 precision. The template lists are too small for the model to learn what a health datum is rather than which ones exist.
+- TAB is not hurt: at a bias of 3 (the synthetic dev set changed the calibration), English test recall 0.931, quasi 0.922, precision 0.785; French quasi 0.909, precision 0.738, as without the synthetic documents.
+
 ## Using it in go-anon
 
 go-anon's anonymizer takes any `anonymizer.Recognizer`. `recognizer.New` wraps an indecis model and applies go-anon's filters after it, as its own recognizer does after the CRF:
