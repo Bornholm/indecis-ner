@@ -49,6 +49,7 @@ func main() {
 	models := flag.String("indecis", "", "indecis model directories, comma-separated, empty: skip")
 	int8 := flag.Bool("int8", false, "indecis in int8")
 	threads := flag.Int("threads", 1, "cores per indecis decision")
+	maxLen := flag.Int("maxlen", 0, "indecis window length in tokens (0: the model's)")
 	jsonOut := flag.String("json", "", "write the scores as JSON to this file")
 	showErrors := flag.Int("errors", 0, "print this many errors per engine")
 	flag.Parse()
@@ -82,6 +83,9 @@ func main() {
 		}
 		var opts []indecis.Option
 		opts = append(opts, indecis.WithThreads(*threads))
+		if *maxLen > 0 {
+			opts = append(opts, indecis.WithMaxLen(*maxLen))
+		}
 		if *int8 {
 			opts = append(opts, indecis.WithInt8())
 		}

@@ -10,6 +10,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/bornholm/indecis"
@@ -29,6 +30,7 @@ func main() {
 	lr := flag.Float64("lr", 1e-4, "encoder learning rate")
 	headLR := flag.Float64("head-lr", 1e-3, "head learning rate")
 	seed := flag.Int64("seed", 1, "seed")
+	group := flag.Float64("group", 0, "share of the sentences joined into texts of 2 to 8 sentences, so that windows hold several")
 	out := flag.String("out", "", "model directory (required)")
 	flag.Parse()
 	if *out == "" {
@@ -43,6 +45,9 @@ func main() {
 		rng := rand.New(rand.NewSource(*seed))
 		rng.Shuffle(len(train), func(i, j int) { train[i], train[j] = train[j], train[i] })
 		train = train[:*limit]
+	}
+	if *group > 0 {
+		train = groupSentences(train, *group, rand.New(rand.NewSource(*seed+1)))
 	}
 	dev, err := dataset.ReadFile(*devPath)
 	if err != nil {
@@ -91,4 +96,53 @@ func main() {
 	for _, mt := range metrics {
 		log.Printf("%s: %s", *testPath, mt)
 	}
+}
+
+// groupSentences joins a share of the sentences into texts of 2 to 8
+// sentences, separated by a space, their entities shifted. Each sentence
+// is used once: the training cost does not change.
+func groupSentences(ex []dataset.Example, share float64, rng *rand.Rand) []dataset.Example {
+	var out, pending []dataset.Example
+	flush := func() {
+		if len(pending) == 0 {
+			return
+		}
+		var b strings.Builder
+		var ents []any
+		for i, e := range pending {
+			if i > 0 {
+				b.WriteByte(' ')
+			}
+			base := b.Len()
+			b.WriteString(e.Text)
+			list, _ := e.Labels["entities"].([]any)
+			for _, item := range list {
+				m := item.(map[string]any)
+				ents = append(ents, map[string]any{"start": m["start"].(float64) + float64(base), "end": m["end"].(float64) + float64(base), "type": m["type"]})
+			}
+		}
+		if ents == nil {
+			ents = []any{}
+		}
+		out = append(out, dataset.Example{Text: b.String(), Labels: map[string]any{"entities": ents}})
+		pending = nil
+	}
+	size := 0
+	for _, e := range ex {
+		if rng.Float64() >= share {
+			out = append(out, e)
+			continue
+		}
+		if size == 0 {
+			size = 2 + rng.Intn(7)
+		}
+		pending = append(pending, e)
+		if len(pending) == size {
+			flush()
+			size = 0
+		}
+	}
+	flush()
+	log.Printf("%d sentences grouped into %d texts", len(ex), len(out))
+	return out
 }
