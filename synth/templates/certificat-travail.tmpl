@@ -1,0 +1,25 @@
+type: certificat_travail
+weight: 1
+---
+{{ORG:employeur|form=juridique_capital @ORG/QUASI}}
+{{ADDR:siege|form=inline}}
+SIRET {{siret:employeur @CODE/-}}
+
+CERTIFICAT DE TRAVAIL
+
+Je soussigné(e), {{PER:signataire|form=civ_prenom_nom @PERSON/DIRECT}}, {{ONE:qualite_drh,qualite_gerant}}, certifie que {{PER:salarie|form=civ_prenom_nom @PERSON/DIRECT}}, demeurant {{ADDR:domicile|form=inline @LOC/DIRECT}}, a été employé(e) dans notre entreprise du {{date:embauche|rel=hire|format=long @DATETIME/QUASI}} au {{date:sortie|rel=recent|format=long @DATETIME/QUASI}}, en qualité de :
+- {{pick:poste_initial|list=postes @DEM/QUASI}}, statut {{pick:statut|list=statuts @DEM/QUASI}}[?evolution]
+- puis {{pick:poste|list=postes @DEM/QUASI}} à compter du {{date:promotion|after=embauche|days=365-2000|format=slash @DATETIME/QUASI}}[/].
+
+[?portabilite]Le salarié bénéficie du maintien de ses garanties de prévoyance auprès de {{ORG:mutuelle|famille=assurance @ORG/QUASI}} pendant {{int:mois|min=3|max=12}} mois.
+[/]
+{{PER:salarie|form=civ_nom_prenom @PERSON/DIRECT}} nous quitte libre de tout engagement.
+
+Fait pour servir et valoir ce que de droit.
+À {{ADDR:siege|form=city}}, le {{date:edition|rel=issue|format=slash}}
+@block qualite_drh
+responsable des ressources humaines
+@end
+@block qualite_gerant
+gérant(e)
+@end

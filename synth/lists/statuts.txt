@@ -1,0 +1,6 @@
+employé
+agent de maîtrise
+cadre
+technicien
+ouvrier qualifié
+cadre dirigeant

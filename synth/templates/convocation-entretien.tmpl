@@ -1,0 +1,46 @@
+type: courrier_disciplinaire
+weight: 1
+---
+{{ORG:employeur|famille=technique @ORG/QUASI}}
+{{ADDR:siege|form=street}}
+{{ADDR:siege|form=citycode}}
+{{pad:40-60}}{{PER:salarie|form=civ_prenom_nom @PERSON/DIRECT}}
+{{pad:40-60}}{{ADDR:domicile|form=street @LOC/DIRECT}}
+{{pad:40-60}}{{ADDR:domicile|form=citycode @LOC/DIRECT}}
+
+Lettre recommandée avec accusé de réception n° {{ref:lrar|pattern=numeric10 @CODE/QUASI}}
+{{pad:40-60}}{{ADDR:siege|form=city}}, le {{date:envoi|rel=recent|format=long}}
+
+Objet : convocation à un entretien préalable à une éventuelle sanction disciplinaire
+
+{{PER:salarie|form=civ_nom_prenom @PERSON/DIRECT}},
+
+Nous avons constaté {{pick:faits|list=faits @MISC/QUASI}}, notamment le {{date:faits|rel=recent|format=long @DATETIME/QUASI}} au sein du {{pick:service|list=services @ORG/QUASI}}.
+[?antecedent]Nous vous rappelons que vous avez déjà fait l'objet d'un avertissement le {{date:avertissement|rel=past|format=slash @DATETIME/QUASI}}.
+[/]
+Nous envisageons à votre égard une sanction disciplinaire pouvant aller jusqu'au licenciement. Conformément aux articles L. 1332-2 et suivants du Code du travail, nous vous convoquons à un entretien préalable le {{date:entretien|rel=future|format=long @DATETIME/QUASI}} à {{int:heure|min=8|max=17}} h 00, dans le bureau de {{PER:drh|form=civ_prenom_nom @PERSON/DIRECT}}.
+
+Vous pouvez vous faire assister lors de cet entretien par une personne de votre choix appartenant au personnel de l'entreprise{{ONE:assist_rien,assist_delegue}}.
+[?medical]Nous avons bien noté que vous êtes actuellement suivi{{ONE:e_vide,e_e}} pour {{pick:pathologie|list=pathologies @DEM/QUASI/HEALTH}} ; si votre état de santé ne vous permet pas de vous déplacer, vous pouvez nous adresser vos observations par écrit.
+[/]
+Nous vous prions d'agréer, {{ONE:civ_m,civ_mme}}, l'expression de nos salutations distinguées.
+
+{{PER:drh|form=prenom_nom @PERSON/DIRECT}}
+Directeur des ressources humaines
+@block assist_rien
+.
+@end
+@block assist_delegue
+, par exemple {{PER:delegue|form=civ_prenom_nom @PERSON/DIRECT}}, {{pick:mandat|list=mandats @DEM/QUASI/UNION}}.
+@end
+@block e_vide
+@end
+@block e_e
+e
+@end
+@block civ_m
+Monsieur
+@end
+@block civ_mme
+Madame
+@end

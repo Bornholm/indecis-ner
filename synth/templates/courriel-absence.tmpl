@@ -1,0 +1,67 @@
+type: courriel
+weight: 1.5
+---
+De : {{PER:salarie|form=prenom_nom @PERSON/DIRECT}} <{{email:salarie|from=salarie @CODE/DIRECT}}>
+À : {{PER:manager|form=prenom_nom @PERSON/DIRECT}} <{{email:manager|from=manager @CODE/DIRECT}}>
+[?cc]Cc : {{PER:rh|form=prenom_nom @PERSON/DIRECT}} <{{email:rh|from=rh @CODE/DIRECT}}>
+[/]Date : {{date:envoi|rel=recent|format=long}}
+{{ONE:cas_absence,cas_retour,cas_amenagement}}
+
+{{ONE:fin_cordial,fin_merci}}
+{{first:salarie @PERSON/QUASI}}
+[?signature]--
+{{PER:salarie|form=prenom_nom @PERSON/DIRECT}}
+{{pick:poste|list=postes @DEM/QUASI}} – {{pick:service|list=services @ORG/QUASI}}
+{{ORG:employeur @ORG/QUASI}}
+Tél. {{phone:salarie|form=dotted @CODE/DIRECT}}
+[/]
+@block cas_absence
+Objet : {{ONE:objet_absence_a,objet_absence_b}}
+
+Bonjour {{first:manager @PERSON/QUASI}},
+
+Je te préviens que mon médecin m'a arrêté{{ONE:e_vide,e_e}} jusqu'au {{date:fin_arret|rel=future|format=long @DATETIME/QUASI/HEALTH}} suite à {{ONE:motif_simple,motif_detail}}. Je t'envoie le volet 3 de l'arrêt par courrier. {{ONE:passation_a,passation_b}}
+@end
+@block cas_retour
+Objet : Mon retour le {{date:retour|rel=future|format=slash @DATETIME/QUASI}}
+
+Bonjour {{first:manager @PERSON/QUASI}},
+
+Je reprends le travail le {{date:retour|rel=future|format=long @DATETIME/QUASI}}, après {{int:semaines|min=2|max=12|suffix= semaines @DATETIME/QUASI/HEALTH}} d'arrêt pour {{pick:motif|list=motifs_arret @DEM/QUASI/HEALTH}}. Le médecin du travail, {{PER:mdt|form=titre_nom @PERSON/DIRECT}}, me reçoit en visite de reprise le {{date:visite|rel=future|format=slash @DATETIME/QUASI/HEALTH}}. Pourrais-tu prévenir l'équipe du {{pick:service|list=services @ORG/QUASI}} ?
+@end
+@block cas_amenagement
+Objet : Demande d'aménagement de poste
+
+Bonjour {{PER:manager|form=civ_prenom_nom @PERSON/DIRECT}},
+
+Comme évoqué lors de notre entretien, ma {{pick:handicap|list=handicaps @DEM/QUASI/HEALTH}} a été renouvelée le mois dernier. Le médecin du travail recommande un poste sans port de charges et un siège ergonomique. Je reste disponible pour en parler avec {{PER:rh|form=prenom_nom @PERSON/DIRECT}} des ressources humaines.
+@end
+@block motif_simple
+{{pick:motif|list=motifs_arret @DEM/QUASI/HEALTH}}
+@end
+@block motif_detail
+mon opération du {{date:operation|rel=recent|format=slash @DATETIME/QUASI/HEALTH}} ; on m'a diagnostiqué {{pick:pathologie|list=pathologies @DEM/QUASI/HEALTH}}
+@end
+@block e_vide
+@end
+@block e_e
+e
+@end
+@block passation_a
+{{PER:collegue|form=prenom_nom @PERSON/DIRECT}} peut reprendre mes dossiers en cours.
+@end
+@block passation_b
+Les plannings de la semaine sont à jour dans le dossier partagé.
+@end
+@block fin_cordial
+Bien à toi,
+@end
+@block fin_merci
+Merci d'avance et à bientôt,
+@end
+@block objet_absence_a
+Absence à partir de demain
+@end
+@block objet_absence_b
+Arrêt maladie
+@end

@@ -1,0 +1,43 @@
+type: entretien_annuel
+weight: 1
+---
+COMPTE RENDU D'ENTRETIEN ANNUEL D'ÉVALUATION – {{date:periode|rel=issue|format=month_year}}
+
+Collaborateur : {{PER:salarie|form=nom_prenom_caps @PERSON/DIRECT}}{{pad:6-12}}Matricule : {{matricule:salarie|digits=6 @CODE/DIRECT}}
+Fonction : {{pick:poste|list=postes @DEM/QUASI}}{{pad:6-12}}Service : {{pick:service|list=services @ORG/QUASI}}
+Ancienneté : {{int:anciennete|min=1|max=25|suffix= ans @DATETIME/QUASI}}{{pad:6-12}}Âge : {{age:salarie|of=naissance @DEM/QUASI}}
+Évaluateur : {{PER:manager|form=prenom_nom @PERSON/DIRECT}}, {{pick:poste_manager|list=postes @DEM/QUASI}}
+Date de l'entretien : {{date:entretien|rel=recent|format=slash @DATETIME/QUASI}}
+
+1. Bilan de l'année écoulée
+{{ONE:bilan_bon,bilan_moyen}}
+
+2. Situation personnelle et conditions de travail
+{{ONE:perso_famille,perso_sante,perso_syndicat,perso_rien}}
+
+3. Objectifs pour l'année à venir
+- Accompagner l'arrivée de {{PER:nouveau|form=prenom_nom @PERSON/DIRECT}} dans l'équipe.
+- Suivre la formation {{pick:diplome|list=diplomes @DEM/QUASI}} [?cpf]financée par le CPF[/].
+
+4. Souhaits d'évolution
+{{first:salarie @PERSON/QUASI}} souhaite évoluer vers un poste de {{pick:poste_vise|list=postes @DEM/QUASI}}[?mobilite], si possible sur le site de {{ADDR:site|form=city @LOC/QUASI}}[/].
+
+Signature du collaborateur{{pad:20-30}}Signature de l'évaluateur
+@block bilan_bon
+Les objectifs fixés l'an dernier sont atteints. {{first:salarie @PERSON/QUASI}} a notamment piloté la mise en place du nouveau logiciel de planification et formé {{int:formes|min=2|max=9}} collègues.
+@end
+@block bilan_moyen
+Les objectifs sont partiellement atteints. L'absence prolongée de {{first:salarie @PERSON/QUASI}} entre {{date:abs_debut|rel=past|format=month_year @DATETIME/QUASI/HEALTH}} et {{date:abs_fin|after=abs_debut|days=30-120|format=month_year @DATETIME/QUASI/HEALTH}} a retardé le projet.
+@end
+@block perso_famille
+Le collaborateur, {{pick:situation|list=situations @DEM/QUASI}}, demande un aménagement de ses horaires le mercredi.
+@end
+@block perso_sante
+Le collaborateur signale {{pick:pathologie|list=pathologies @DEM/QUASI/HEALTH}} qui rend difficiles les déplacements ; une visite auprès de {{PER:mdt|form=titre_nom @PERSON/DIRECT}}, médecin du travail, est programmée.
+@end
+@block perso_syndicat
+Le collaborateur rappelle qu'il exerce un mandat de {{pick:mandat|list=mandats @DEM/QUASI/UNION}} et que ses heures de délégation doivent être prises en compte dans la charge de travail.
+@end
+@block perso_rien
+Rien à signaler.
+@end

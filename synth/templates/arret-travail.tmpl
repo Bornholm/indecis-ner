@@ -1,0 +1,38 @@
+type: arret_travail
+weight: 1
+---
+AVIS D'ARRÊT DE TRAVAIL{{pad:20-40}}Volet 3 à adresser à l'employeur
+cerfa n° 10170*05
+
+Identification de l'assuré
+Nom : {{PER:assure|form=nom_seul @PERSON/DIRECT}}{{pad:10-20}}Prénom : {{first:assure @PERSON/DIRECT}}
+N° d'immatriculation : {{nir:assure|birth=naissance|format=compact @CODE/DIRECT}}
+Date de naissance : {{date:naissance|rel=birth|format=slash @DATETIME/QUASI}}
+Adresse : {{ADDR:domicile|form=inline_dash_caps @LOC/DIRECT}}
+
+Employeur : {{ORG:employeur @ORG/QUASI}}
+Adresse : {{ADDR:employeur|form=inline @LOC/QUASI}}
+
+{{ONE:initial,prolongation}}
+Sorties autorisées : {{ONE:sorties_oui,sorties_non}}
+[?tp]Reprise à temps partiel pour motif thérapeutique à compter du {{date:reprise|after=debut|days=10-40|format=slash @DATETIME/QUASI/HEALTH}}
+[/]
+Praticien : {{PER:medecin|form=titre_nom_caps @PERSON/DIRECT}}, {{ADDR:cabinet|form=inline @LOC/QUASI}}
+Identifiant : {{matricule:rpps|digits=11 @CODE/DIRECT}}
+Date : {{date:avis|rel=recent|format=slash}}
+@block initial
+Arrêt de travail initial
+du {{date:debut|rel=recent|format=slash @DATETIME/QUASI/HEALTH}} au {{date:fin|after=debut|days=3-30|format=slash @DATETIME/QUASI/HEALTH}} inclus
+Éléments d'ordre médical : {{pick:motif|list=motifs_arret @DEM/QUASI/HEALTH}}
+@end
+@block prolongation
+Prolongation de l'arrêt de travail
+jusqu'au {{date:fin|after=debut|days=10-60|format=slash @DATETIME/QUASI/HEALTH}} inclus
+Arrêt initial prescrit le {{date:debut|rel=recent|format=slash @DATETIME/QUASI/HEALTH}} pour {{pick:motif|list=motifs_arret @DEM/QUASI/HEALTH}}
+@end
+@block sorties_oui
+oui, en dehors des heures de 9 h à 11 h et de 14 h à 16 h
+@end
+@block sorties_non
+non
+@end

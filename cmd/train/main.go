@@ -30,7 +30,7 @@ func main() {
 	lr := flag.Float64("lr", 1e-4, "encoder learning rate")
 	headLR := flag.Float64("head-lr", 1e-3, "head learning rate")
 	seed := flag.Int64("seed", 1, "seed")
-	task := flag.String("task", "wikiner", `schema: "wikiner" (PER, LOC, ORG, MISC) or "tab" (TAB types and masking)`)
+	task := flag.String("task", "wikiner", `schema: "wikiner" (PER, LOC, ORG, MISC), "tab" (TAB types and masking) or "work" (tab and special categories)`)
 	group := flag.Float64("group", 0, "share of the sentences joined into texts of 2 to 8 sentences, so that windows hold several")
 	out := flag.String("out", "", "model directory (required)")
 	flag.Parse()
@@ -67,6 +67,12 @@ func main() {
 		schema = indecis.Schema{
 			indecis.NewSpans("entities", "Entities that may describe a person (TAB types)", "PERSON", "CODE", "LOC", "ORG", "DEM", "DATETIME", "QUANTITY", "MISC"),
 			indecis.NewSpans("mask", "Passages to mask: direct identifiers and quasi-identifiers of the person to protect", "DIRECT", "QUASI"),
+		}
+	case "work":
+		schema = indecis.Schema{
+			indecis.NewSpans("entities", "Entities that may describe a person (TAB types)", "PERSON", "CODE", "LOC", "ORG", "DEM", "DATETIME", "QUANTITY", "MISC"),
+			indecis.NewSpans("mask", "Passages to mask: direct identifiers and quasi-identifiers (GUIDELINES.md)", "DIRECT", "QUASI"),
+			indecis.NewSpans("sensitive", "Special categories of personal data, GDPR articles 9 and 10", "HEALTH", "UNION", "BELIEF", "POLITICS", "ORIGIN", "SEXUALITY", "OFFENCE"),
 		}
 	default:
 		log.Fatalf("unknown task %q", *task)

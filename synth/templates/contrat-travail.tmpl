@@ -1,0 +1,41 @@
+type: contrat_travail
+weight: 1
+---
+CONTRAT DE TRAVAIL À DURÉE INDÉTERMINÉE
+
+Entre les soussignés :
+
+La société {{ORG:employeur|famille=commerce @ORG/QUASI}}, dont le siège social est situé {{ADDR:siege|form=inline @LOC/QUASI}}, immatriculée sous le numéro SIRET {{siret:employeur @CODE/-}}, représentée par {{PER:drh|form=civ_prenom_nom @PERSON/DIRECT}}, agissant en qualité de directeur des ressources humaines,
+
+ci-après dénommée « l'Employeur », d'une part,
+
+Et
+
+{{PER:salarie|form=civ_prenom_nom @PERSON/DIRECT}}, né(e) le {{date:naissance|rel=birth|format=long @DATETIME/QUASI}} à {{ADDR:lieu_naissance|form=city @LOC/QUASI}}, de nationalité {{pick:nationalite|list=nationalites @DEM/QUASI}}, demeurant {{ADDR:domicile|form=inline @LOC/DIRECT}}, immatriculé(e) à la sécurité sociale sous le numéro {{nir:salarie|birth=naissance @CODE/DIRECT}},
+
+ci-après dénommé(e) « le Salarié », d'autre part,
+
+Il a été convenu ce qui suit :
+
+Article 1 – Engagement
+Le Salarié est engagé à compter du {{date:embauche|rel=hire|format=long @DATETIME/QUASI}} en qualité de {{pick:poste|list=postes @DEM/QUASI}}, statut {{pick:statut|list=statuts @DEM/QUASI}}, coefficient {{int:coef|min=150|max=450 @DEM/QUASI}} de la {{pick:convention|list=conventions}}.
+[?periode]
+Article 2 – Période d'essai
+Le présent contrat ne deviendra définitif qu'à l'issue d'une période d'essai de {{int:essai|min=1|max=4}} mois, au cours de laquelle chacune des parties pourra y mettre fin sans indemnité.
+[/]
+Article 3 – Lieu de travail
+Le Salarié exercera ses fonctions au sein du {{pick:service|list=services @ORG/QUASI}}, situé {{ADDR:site|form=inline @LOC/QUASI}}. Ce lieu pourra être modifié dans le même secteur géographique.
+
+Article 4 – Rémunération
+En contrepartie de son travail, le Salarié percevra une rémunération mensuelle brute de {{money:brut|min=1750|max=5200|format=eur @QUANTITY/QUASI}} pour une durée hebdomadaire de 35 heures.
+[?handicap]
+Article 5 – Aménagement du poste
+Compte tenu de la {{pick:handicap|list=handicaps @DEM/QUASI/HEALTH}} dont bénéficie le Salarié, l'Employeur s'engage à mettre en œuvre les aménagements préconisés par le médecin du travail.
+[/]
+Article 6 – Diplôme
+Le Salarié déclare être titulaire du {{pick:diplome|list=diplomes @DEM/QUASI}} et s'engage à informer l'Employeur de toute modification de sa situation.
+
+Fait à {{ADDR:siege|form=city @LOC/QUASI}}, le {{date:signature|rel=hire|format=slash}}, en deux exemplaires originaux.
+
+Pour l'Employeur{{pad:20-30}}Le Salarié
+{{PER:drh|form=prenom_nom @PERSON/DIRECT}}{{pad:20-30}}{{PER:salarie|form=prenom_nom @PERSON/DIRECT}}

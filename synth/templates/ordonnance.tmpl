@@ -1,0 +1,26 @@
+type: ordonnance
+weight: 1
+---
+{{pad:0-4}}{{PER:medecin|form=titre_nom @PERSON/DIRECT}}
+{{pad:0-4}}{{pick:specialite|list=specialites @DEM/QUASI}}
+{{pad:0-4}}{{ADDR:cabinet|form=street @LOC/QUASI}}
+{{pad:0-4}}{{ADDR:cabinet|form=citycode @LOC/QUASI}}
+{{pad:0-4}}Tél. {{phone:cabinet|form=spaced @CODE/QUASI}}
+{{pad:0-4}}N° RPPS {{matricule:rpps|digits=11 @CODE/DIRECT}}
+
+{{pad:30-50}}{{ADDR:cabinet|form=city}}, le {{date:consultation|rel=recent|format=slash @DATETIME/QUASI}}
+
+{{pad:0-4}}{{PER:patient|form=civ_prenom_nom @PERSON/DIRECT}}
+{{pad:0-4}}{{age:patient|of=naissance @DEM/QUASI}}{{pad:4-8}}[?poids]Poids : {{int:poids|min=48|max=110|suffix= kg @DEM/QUASI/HEALTH}}[/]
+
+{{pad:0-4}}ORDONNANCE
+{{LINES:ligne:1-4}}
+[?ald]
+{{pad:0-4}}Prescriptions en rapport avec {{pick:pathologie|list=pathologies @DEM/QUASI/HEALTH}} (affection de longue durée) :
+{{LINES:ligne:1-2}}
+[/]
+{{pad:0-4}}Renouvelable {{int:renouv|min=0|max=3}} fois.
+{{pad:30-50}}Signature
+@block ligne
+{{pad:0-4}}- {{pick:|list=medicaments @MISC/QUASI/HEALTH}}
+@end

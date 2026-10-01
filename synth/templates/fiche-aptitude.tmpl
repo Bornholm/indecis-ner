@@ -1,0 +1,48 @@
+type: fiche_aptitude
+weight: 1
+---
+{{ORG:spst|famille=sante @ORG/QUASI}}
+Service de prévention et de santé au travail
+{{ADDR:spst|form=inline}}
+
+FICHE D'AVIS – VISITE {{ONE:v_embauche,v_reprise,v_periodique}}
+
+Salarié : {{PER:salarie|form=nom_naissance @PERSON/DIRECT}}
+Né(e) le : {{date:naissance|rel=birth|format=slash @DATETIME/QUASI}}
+Employeur : {{ORG:employeur @ORG/QUASI}} – {{ADDR:employeur|form=city @LOC/QUASI}}
+Poste occupé : {{pick:poste|list=postes @DEM/QUASI}}
+Date de la visite : {{date:visite|rel=recent|format=slash @DATETIME/QUASI}}
+
+Avis : {{ONE:apte,apte_amenag,inapte}}
+
+Prochaine visite : avant le {{date:prochaine|rel=future|format=month_year}}
+
+{{PER:mdt|form=titre_nom_caps @PERSON/DIRECT}}
+Médecin du travail
+@block v_embauche
+D'INFORMATION ET DE PRÉVENTION INITIALE
+@end
+@block v_reprise
+DE REPRISE (après {{int:semaines|min=4|max=30|suffix= semaines @DATETIME/QUASI/HEALTH}} d'arrêt)
+@end
+@block v_periodique
+PÉRIODIQUE
+@end
+@block apte
+Pas de contre-indication médicale au poste.
+@end
+@block apte_amenag
+Apte avec aménagements : {{ONE:am_charges,am_nuit,am_ecran}}
+@end
+@block am_charges
+pas de port de charges supérieures à 10 kg pendant {{int:mois|min=2|max=6|suffix= mois @DATETIME/QUASI/HEALTH}}.
+@end
+@block am_nuit
+pas de travail de nuit en raison de son traitement pour {{pick:pathologie|list=pathologies @DEM/QUASI/HEALTH}}.
+@end
+@block am_ecran
+pauses de 10 minutes toutes les deux heures de travail sur écran.
+@end
+@block inapte
+Inapte au poste. L'état de santé du salarié fait obstacle à tout reclassement dans un emploi.
+@end

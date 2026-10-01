@@ -1,0 +1,33 @@
+type: courriel
+weight: 1
+---
+De : {{PER:elu|form=prenom_nom @PERSON/DIRECT}} <{{email:elu|from=elu @CODE/DIRECT}}>
+À : {{PER:direction|form=prenom_nom @PERSON/DIRECT}} <{{email:direction|from=direction @CODE/DIRECT}}>
+Date : {{date:envoi|rel=recent|format=slash}}
+Objet : Situation de {{PER:salarie|form=civ_prenom_nom @PERSON/DIRECT}}
+
+{{PER:direction|form=civ_prenom_nom @PERSON/DIRECT}},
+
+En tant que {{pick:mandat|list=mandats @DEM/QUASI/UNION}}, je souhaite attirer votre attention sur la situation de {{PER:salarie|form=prenom_nom @PERSON/DIRECT}}, {{pick:poste|list=postes @DEM/QUASI}} au {{pick:service|list=services @ORG/QUASI}} depuis {{int:anciennete|min=2|max=20|suffix= ans @DATETIME/QUASI}}.
+
+{{ONE:cas_sante,cas_conflit,cas_religion}}
+
+Je vous propose d'en parler lors de la prochaine réunion du CSE du {{date:reunion|rel=future|format=long}}.
+
+Cordialement,
+{{PER:elu|form=prenom_nom @PERSON/DIRECT}}
+@block cas_sante
+Depuis son retour d'arrêt pour {{pick:motif|list=motifs_arret @DEM/QUASI/HEALTH}}, aucun aménagement n'a été mis en place malgré l'avis du médecin du travail du {{date:avis|rel=past|format=slash @DATETIME/QUASI/HEALTH}}. Elle est la seule {{ONE:seule_a,seule_b}} de l'équipe, et son absence se remarque immédiatement.
+@end
+@block cas_conflit
+Plusieurs collègues, dont {{PER:temoin|form=prenom_nom @PERSON/DIRECT}}, ont été témoins le {{date:incident|rel=recent|format=long @DATETIME/QUASI}} de propos déplacés tenus à son égard par {{PER:chef|form=prenom_nom @PERSON/DIRECT}} en réunion d'équipe.
+@end
+@block cas_religion
+Il a demandé à poser un jour de congé pour {{pick:fete|list=fetes @MISC/QUASI/BELIEF}}, demande refusée sans motif alors que d'autres congés ont été accordés le même jour.
+@end
+@block seule_a
+infirmière formée à la dialyse
+@end
+@block seule_b
+technicienne habilitée sur le poste de contrôle
+@end

@@ -101,7 +101,7 @@ func trim(text string, start, end int) (int, int) {
 	}
 	for s < e {
 		r, size := utf8.DecodeLastRuneInString(text[s:e])
-		if !strings.ContainsRune(closePunct, r) && !unicode.IsSpace(r) {
+		if !unicode.IsSpace(r) && (!strings.ContainsRune(closePunct, r) || paired(text[s:e-size], r)) {
 			break
 		}
 		e -= size
@@ -110,4 +110,9 @@ func trim(text string, start, end int) (int, int) {
 		return start, end
 	}
 	return s, e
+}
+
+func paired(span string, closing rune) bool {
+	open, ok := map[rune]rune{')': '(', ']': '[', '}': '{', '»': '«', '›': '‹', '”': '“'}[closing]
+	return ok && strings.Count(span, string(open)) > strings.Count(span, string(closing))
 }

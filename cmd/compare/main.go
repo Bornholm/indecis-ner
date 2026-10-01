@@ -36,7 +36,8 @@ type engine struct {
 	find func(texts []string) ([][]entity, error)
 }
 
-var types = []string{"PER", "LOC", "ORG", "MISC"}
+// types are the types of the labels, set from the test file.
+var types []string
 
 func main() {
 	testPath := flag.String("test", "data/test_clean.jsonl", "labeled examples")
@@ -50,6 +51,8 @@ func main() {
 	int8 := flag.Bool("int8", false, "indecis in int8")
 	threads := flag.Int("threads", 1, "cores per indecis decision")
 	maxLen := flag.Int("maxlen", 0, "indecis window length in tokens (0: the model's)")
+	merge := flag.Bool("merge", false, "score passages whatever their type: masked or not")
+	bias := flag.Float64("bias", 0, "indecis decoding bias towards passages (indecis.WithSpanBias)")
 	jsonOut := flag.String("json", "", "write the scores as JSON to this file")
 	showErrors := flag.Int("errors", 0, "print this many errors per engine")
 	flag.Parse()
@@ -58,6 +61,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	seenTypes := map[string]bool{}
 	gold := make([][]entity, len(examples))
 	texts := make([]string, len(examples))
 	for i, e := range examples {
@@ -65,9 +69,18 @@ func main() {
 		list, _ := e.Labels[*question].([]any)
 		for _, item := range list {
 			m := item.(map[string]any)
-			gold[i] = append(gold[i], entity{int(m["start"].(float64)), int(m["end"].(float64)), m["type"].(string)})
+			typ := m["type"].(string)
+			if *merge {
+				typ = "ANY"
+			}
+			gold[i] = append(gold[i], entity{int(m["start"].(float64)), int(m["end"].(float64)), typ})
+			seenTypes[typ] = true
 		}
 	}
+	for t := range seenTypes {
+		types = append(types, t)
+	}
+	sort.Strings(types)
 
 	var engines []engine
 	if *crfPath != "" {
@@ -82,7 +95,7 @@ func main() {
 			continue
 		}
 		var opts []indecis.Option
-		opts = append(opts, indecis.WithThreads(*threads))
+		opts = append(opts, indecis.WithThreads(*threads), indecis.WithSpanBias(*question, *bias))
 		if *maxLen > 0 {
 			opts = append(opts, indecis.WithMaxLen(*maxLen))
 		}
@@ -94,6 +107,9 @@ func main() {
 			log.Fatal(err)
 		}
 		name := "indecis " + dir
+		if *bias != 0 {
+			name += fmt.Sprintf(" bias %g", *bias)
+		}
 		if *int8 {
 			name += " int8"
 		}
@@ -106,7 +122,11 @@ func main() {
 					return nil, err
 				}
 				for _, s := range d[0][*question].Spans {
-					out[i] = append(out[i], entity{s.Start, s.End, s.Type})
+					typ := s.Type
+					if *merge {
+						typ = "ANY"
+					}
+					out[i] = append(out[i], entity{s.Start, s.End, typ})
 				}
 			}
 			return out, nil

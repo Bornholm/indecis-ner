@@ -1,0 +1,35 @@
+type: bulletin_paie
+weight: 1.5
+---
+{{pad:2-4}}BULLETIN DE PAIE{{pad:40-60}}Période du {{date:debut|rel=month_start|format=slash}} au {{date:fin|rel=month_end|format=slash}}
+{{pad:2-4}}{{ORG:employeur|form=caps @ORG/QUASI}}
+{{pad:2-4}}{{ADDR:site|form=street @LOC/QUASI}}{{pad:30-50}}{{PER:salarie|form=civ_prenom_nom @PERSON/DIRECT}}
+{{pad:2-4}}{{ADDR:site|form=citycode @LOC/QUASI}}{{pad:30-50}}{{ADDR:domicile|form=street @LOC/DIRECT}}
+{{pad:2-4}}Siret : {{siret:employeur @CODE/-}}{{pad:20-40}}{{ADDR:domicile|form=citycode @LOC/DIRECT}}
+{{pad:2-4}}Code NAF : {{decoy:code_court}}
+{{pad:2-4}}URSSAF de {{ADDR:urssaf|form=city}}
+
+{{pad:2-4}}Matricule : {{matricule:salarie|prefix=M|digits=5 @CODE/DIRECT}}{{pad:8-14}}N° de sécurité sociale : {{nir:salarie|birth=naissance @CODE/DIRECT}}
+{{pad:2-4}}Emploi : {{pick:poste|list=postes @DEM/QUASI}}{{pad:8-14}}Coefficient : {{int:coef|min=150|max=450 @DEM/QUASI}}
+{{pad:2-4}}Date d'entrée : {{date:embauche|rel=hire|format=slash @DATETIME/QUASI}}{{pad:8-14}}Date de naissance : {{date:naissance|rel=birth|format=slash @DATETIME/QUASI}}
+[?contrat]{{pad:2-4}}Contrat : {{pick:contrat|list=contrats @MISC/QUASI}}
+[/][?service]{{pad:2-4}}Affectation : {{pick:service|list=services @ORG/QUASI}}
+[/]{{pad:2-4}}{{pick:convention|list=conventions}}
+
+{{pad:2-4}}Rubrique{{pad:30-40}}Base{{pad:8-12}}Taux{{pad:8-12}}Montant salarial{{pad:6-10}}Montant patronal
+{{pad:2-4}}Salaire de base{{pad:20-30}}151,67{{pad:8-12}}{{money:taux_horaire|min=12|max=40}}{{pad:8-12}}{{money:brut|min=1750|max=5200 @QUANTITY/QUASI}}
+[?heures]{{pad:2-4}}Heures supplémentaires 25 %{{pad:12-20}}{{int:hs|min=2|max=18}},00{{pad:8-12}}{{money:taux_hs|min=15|max=50}}{{pad:8-12}}{{money:montant_hs|min=40|max=600 @QUANTITY/QUASI}}
+[/][?absence]{{pad:2-4}}Absence maladie du {{date:arret|rel=recent|format=slash @DATETIME/QUASI}} au {{date:fin_arret|after=arret|days=2-15|format=slash @DATETIME/QUASI}}{{pad:6-10}}-{{money:retenue|min=80|max=900 @QUANTITY/QUASI}}
+{{pad:2-4}}Indemnités journalières de sécurité sociale{{pad:10-16}}{{money:ijss|min=60|max=700 @QUANTITY/QUASI/HEALTH}}
+[/][?mandat]{{pad:2-4}}Heures de délégation ({{pick:mandat|list=mandats @DEM/QUASI/UNION}}){{pad:8-12}}{{int:delegation|min=4|max=24}},00
+[/]{{pad:2-4}}SALAIRE BRUT{{pad:40-60}}{{money:brut|min=1750|max=5200 @QUANTITY/QUASI}}
+{{pad:2-4}}Sécurité sociale maladie maternité{{pad:12-18}}{{money:brut|min=1750|max=5200}}{{pad:6-10}}7,0000{{pad:20-30}}{{money:maladie|of=brut|ratio=0.07}}
+{{pad:2-4}}Retraite complémentaire tranche 1{{pad:12-18}}{{money:brut|min=1750|max=5200}}{{pad:6-10}}3,1500{{pad:6-10}}{{money:retraite|of=brut|ratio=0.0315}}{{pad:6-10}}{{money:retraite_p|of=brut|ratio=0.0472}}
+{{pad:2-4}}Mutuelle {{ORG:mutuelle|famille=assurance @ORG/QUASI}}{{pad:20-30}}{{money:mutuelle|min=25|max=90}}
+{{pad:2-4}}CSG déductible{{pad:30-40}}{{money:csg|of=brut|ratio=0.0668}}
+{{pad:2-4}}NET À PAYER AVANT IMPÔT SUR LE REVENU{{pad:20-30}}{{money:net|of=brut|ratio=0.78 @QUANTITY/QUASI}}
+{{pad:2-4}}Impôt sur le revenu prélevé à la source, taux personnalisé {{int:taux_pas|min=0|max=14|suffix=,0 % @QUANTITY/QUASI}}{{pad:6-10}}{{money:pas|of=brut|ratio=0.03}}
+{{pad:2-4}}NET PAYÉ{{pad:40-60}}{{money:net_paye|of=brut|ratio=0.755|format=eur @QUANTITY/QUASI}}
+{{pad:2-4}}Payé par virement le {{date:paiement|rel=month_end|format=slash}} sur le compte {{iban:salarie @CODE/DIRECT}}
+{{pad:2-4}}Congés payés : acquis {{int:cp_acquis|min=5|max=30}},00 j{{pad:4-8}}pris {{int:cp_pris|min=0|max=20}},00 j
+{{pad:2-4}}Dans votre intérêt et pour vous aider à faire valoir vos droits, conservez ce bulletin de paie sans limitation de durée.
