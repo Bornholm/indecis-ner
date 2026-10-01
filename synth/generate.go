@@ -30,7 +30,7 @@ var generators = map[string]bool{
 
 // Span is a labeled passage of a generated document, in bytes.
 type Span struct {
-	Start, End           int
+	Start, End            int
 	Type, Mask, Sensitive string
 }
 
