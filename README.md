@@ -76,6 +76,17 @@ There is no French counterpart of TAB. `make tab-translate` has Claude translate
 
 The model never saw French annotations: the multilingual backbone carries most of the task over, and loses 6 points of quasi-identifier recall. ORG (0.85 to 0.62) and DEM (0.70 to 0.46) lose the most.
 
+Adding 195 training rulings translated the same way (a random sample of 200, 5 lost markers three times and were left out; `runs/chain_fr200.sh`) to the 1,014 English ones:
+
+| First annotator, 126 rulings, bias 2 | Recall | Direct | Quasi | Precision | ORG | DEM |
+| --- | --- | --- | --- | --- | --- | --- |
+| English, English training | 0.948 | 0.992 | 0.941 | 0.765 | 0.849 | 0.698 |
+| English, + 195 French | 0.951 | 0.996 | 0.944 | 0.758 | 0.851 | 0.735 |
+| French, English training | 0.875 | 0.977 | 0.884 | 0.709 | 0.615 | 0.461 |
+| French, + 195 French | 0.913 | 0.985 | 0.917 | 0.720 | 0.792 | 0.519 |
+
+ORG and DEM are token recalls. A fifth of the training set in French halves the gap with English (quasi-identifiers: 5.7 points down to 2.7) and costs English nothing. On the whole English test set (all annotators), the model scores 0.938 recall, 0.993 direct, 0.931 quasi, 0.762 precision.
+
 ## Using it in go-anon
 
 go-anon's anonymizer takes any `anonymizer.Recognizer`. `recognizer.New` wraps an indecis model and applies go-anon's filters after it, as its own recognizer does after the CRF:
