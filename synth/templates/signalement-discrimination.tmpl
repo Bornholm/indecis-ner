@@ -1,0 +1,33 @@
+type: signalement
+weight: 1
+---
+De : {{PER:victime|form=prenom_nom @PERSON/DIRECT}} <{{email:victime|from=victime @CODE/DIRECT}}>
+À : {{PER:rh|form=prenom_nom @PERSON/DIRECT}} <{{email:rh|from=rh @CODE/DIRECT}}>
+Date : {{date:envoi|rel=recent|format=long}}
+Objet : Signalement – propos tenus au {{pick:service|list=services @ORG/QUASI}}
+
+Madame, Monsieur,
+
+Je souhaite signaler des faits survenus le {{date:faits|rel=recent|format=long @DATETIME/QUASI}} lors de la pause déjeuner.
+
+{{ONE:faits_origine,faits_orientation,faits_croyance,faits_politique}}
+
+Ces propos ont été entendus par {{PER:temoin|form=prenom_nom @PERSON/DIRECT}}, {{pick:poste_temoin|list=postes @DEM/QUASI}}, qui accepte de témoigner.
+[?precedent]Ce n'est pas la première fois : le {{date:precedent|rel=past|format=slash @DATETIME/QUASI}}, j'avais déjà alerté {{PER:manager|form=civ_prenom_nom @PERSON/DIRECT}}, sans suite.
+[/]
+Je vous remercie de bien vouloir donner suite à ce signalement.
+
+{{PER:victime|form=prenom_nom @PERSON/DIRECT}}
+{{pick:poste|list=postes @DEM/QUASI}}
+@block faits_origine
+{{PER:auteur|form=prenom_nom @PERSON/DIRECT}}, mon chef d'équipe, a fait devant tout le monde des plaisanteries sur le fait que je suis {{pick:origine|list=origines @DEM/QUASI/ORIGIN}}, et m'a demandé si j'avais « des papiers en règle ».
+@end
+@block faits_orientation
+{{PER:auteur|form=prenom_nom @PERSON/DIRECT}} a révélé à l'équipe que je suis {{pick:orientation|list=orientation @DEM/QUASI/SEXUALITY}}, ce que je n'avais confié qu'à lui, et depuis plusieurs collègues refusent de travailler avec moi.
+@end
+@block faits_croyance
+{{PER:auteur|form=prenom_nom @PERSON/DIRECT}} s'est moqué de moi parce que je suis {{pick:croyance|list=croyances @DEM/QUASI/BELIEF}} et a déclaré que « les gens comme moi » n'avaient rien à faire dans le service.
+@end
+@block faits_politique
+{{PER:auteur|form=prenom_nom @PERSON/DIRECT}} m'a reproché publiquement d'être {{pick:politique|list=politique @DEM/QUASI/POLITICS}} et a sous-entendu que cela compterait lors de mon prochain entretien annuel.
+@end

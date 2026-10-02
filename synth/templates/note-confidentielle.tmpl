@@ -1,0 +1,37 @@
+type: note_confidentielle
+weight: 1
+---
+NOTE CONFIDENTIELLE – DIRECTION DES RESSOURCES HUMAINES
+Réf. {{ref:note|pattern=numeric10}}
+
+Objet : situation de {{PER:salarie|form=civ_prenom_nom @PERSON/DIRECT}}, {{pick:poste|list=postes @DEM/QUASI}} au {{pick:service|list=services @ORG/QUASI}}
+
+{{first:salarie @PERSON/QUASI}} est entré{{ONE:e_vide,e_e}} dans l'entreprise le {{date:embauche|rel=hire|format=long @DATETIME/QUASI}}. Plusieurs éléments portés à notre connaissance appellent une vigilance particulière.
+
+{{ONE:n_origine,n_croyance,n_orientation}}
+
+{{ONE:n_politique,n_infraction}}
+
+Les informations ci-dessus ne peuvent fonder aucune décision et ne seront pas versées au dossier du salarié.
+
+{{PER:drh|form=prenom_nom @PERSON/DIRECT}}, le {{date:note|rel=issue|format=slash}}
+@block e_vide
+@end
+@block e_e
+e
+@end
+@block n_origine
+Des collègues rapportent des remarques répétées sur le fait que {{first:salarie @PERSON/QUASI}} est {{pick:origine|list=origines @DEM/QUASI/ORIGIN}}.
+@end
+@block n_croyance
+{{first:salarie @PERSON/QUASI}}, {{pick:croyance|list=croyances @DEM/QUASI/BELIEF}}, a demandé un aménagement de ses pauses pendant {{pick:fete|list=fetes @MISC/QUASI/BELIEF}}.
+@end
+@block n_orientation
+{{first:salarie @PERSON/QUASI}} a confié à son manager être {{pick:orientation|list=orientation @DEM/QUASI/SEXUALITY}} et craint des réactions de l'équipe.
+@end
+@block n_politique
+Par ailleurs, {{first:salarie @PERSON/QUASI}} est {{pick:politique|list=politique @DEM/QUASI/POLITICS}} à {{ADDR:commune|form=city @LOC/QUASI}}.
+@end
+@block n_infraction
+Par ailleurs, nous avons appris que {{first:salarie @PERSON/QUASI}} a été {{pick:infraction|list=infractions @MISC/QUASI/OFFENCE}}.
+@end

@@ -10,7 +10,7 @@ Objet : Situation de {{PER:salarie|form=civ_prenom_nom @PERSON/DIRECT}}
 
 En tant que {{pick:mandat|list=mandats @DEM/QUASI/UNION}}, je souhaite attirer votre attention sur la situation de {{PER:salarie|form=prenom_nom @PERSON/DIRECT}}, {{pick:poste|list=postes @DEM/QUASI}} au {{pick:service|list=services @ORG/QUASI}} depuis {{int:anciennete|min=2|max=20|suffix= ans @DATETIME/QUASI}}.
 
-{{ONE:cas_sante,cas_conflit,cas_religion}}
+{{ONE:cas_sante,cas_conflit,cas_religion,cas_origine,cas_orientation}}
 
 Je vous propose d'en parler lors de la prochaine réunion du CSE du {{date:reunion|rel=future|format=long}}.
 
@@ -30,4 +30,10 @@ infirmière formée à la dialyse
 @end
 @block seule_b
 technicienne habilitée sur le poste de contrôle
+@end
+@block cas_origine
+Il est {{pick:origine|list=origines @DEM/QUASI/ORIGIN}} et rapporte avoir été écarté de deux promotions au profit de collègues moins anciens.
+@end
+@block cas_orientation
+Depuis qu'il a dit être {{pick:orientation|list=orientation @DEM/QUASI/SEXUALITY}}, il fait l'objet de remarques quotidiennes de la part de {{PER:chef|form=prenom_nom @PERSON/DIRECT}}.
 @end

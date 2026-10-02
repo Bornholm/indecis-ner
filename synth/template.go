@@ -282,7 +282,15 @@ func parsePlaceholder(s string) (node, error) {
 			if !ok {
 				return nil, fmt.Errorf("argument %q", kv)
 			}
-			p.args[strings.TrimSpace(k)] = strings.TrimSpace(v)
+			k = strings.TrimSpace(k)
+			if k == "suffix" {
+				// "suffix= semaines": the space is part of the text, and only
+				// the space before @ is trimmed.
+				v = strings.TrimRight(v, " ")
+			} else {
+				v = strings.TrimSpace(v)
+			}
+			p.args[k] = v
 		}
 	}
 	if f, ok := p.args["form"]; ok && gen == "PER" && !personForms[f] {

@@ -1,0 +1,35 @@
+type: demande_absence
+weight: 1
+---
+DEMANDE D'AUTORISATION D'ABSENCE
+
+Nom et prénom : {{PER:salarie|form=nom_prenom_caps @PERSON/DIRECT}}
+Matricule : {{matricule:salarie|digits=6 @CODE/DIRECT}}
+Service : {{pick:service|list=services @ORG/QUASI}}
+Responsable hiérarchique : {{PER:manager|form=prenom_nom @PERSON/DIRECT}}
+
+Date(s) demandée(s) : du {{date:debut|rel=future|format=slash @DATETIME/QUASI}} au {{date:fin|after=debut|days=0-3|format=slash @DATETIME/QUASI}}
+
+Motif : {{ONE:motif_fete,motif_mandat,motif_culte,motif_judiciaire}}
+
+Avis du responsable : {{ONE:avis_ok,avis_refus}}
+
+Fait le {{date:demande|rel=recent|format=slash}}{{pad:10-20}}Signature : {{PER:salarie|form=prenom_nom @PERSON/DIRECT}}
+@block motif_fete
+congé sans solde pour {{pick:fete|list=fetes @MISC/QUASI/BELIEF}}, fête que je célèbre en famille.
+@end
+@block motif_culte
+je suis {{pick:croyance|list=croyances @DEM/QUASI/BELIEF}} et je souhaite participer à une célébration religieuse le vendredi après-midi.
+@end
+@block motif_mandat
+exercice de mon mandat de {{pick:politique|list=politique @DEM/QUASI/POLITICS}} (séance du conseil, article L. 2123-1 du code général des collectivités territoriales).
+@end
+@block motif_judiciaire
+convocation au tribunal correctionnel de {{ADDR:tribunal|form=city @LOC/QUASI}} : je suis {{pick:infraction|list=infractions @MISC/QUASI/OFFENCE}} et l'audience a lieu ce jour-là.
+@end
+@block avis_ok
+favorable, {{first:manager @PERSON/QUASI}} assurera la permanence avec {{PER:collegue|form=prenom_nom @PERSON/DIRECT}}.
+@end
+@block avis_refus
+défavorable en raison de l'inventaire annuel ; à reporter.
+@end

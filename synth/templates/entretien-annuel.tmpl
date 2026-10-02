@@ -13,7 +13,7 @@ Date de l'entretien : {{date:entretien|rel=recent|format=slash @DATETIME/QUASI}}
 {{ONE:bilan_bon,bilan_moyen}}
 
 2. Situation personnelle et conditions de travail
-{{ONE:perso_famille,perso_sante,perso_syndicat,perso_rien}}
+{{ONE:perso_famille,perso_sante,perso_syndicat,perso_rien,perso_politique,perso_croyance}}
 
 3. Objectifs pour l'année à venir
 - Accompagner l'arrivée de {{PER:nouveau|form=prenom_nom @PERSON/DIRECT}} dans l'équipe.
@@ -40,4 +40,10 @@ Le collaborateur rappelle qu'il exerce un mandat de {{pick:mandat|list=mandats @
 @end
 @block perso_rien
 Rien à signaler.
+@end
+@block perso_politique
+Le collaborateur, {{pick:politique|list=politique @DEM/QUASI/POLITICS}}, demande que ses absences pour les séances du conseil soient anticipées dans le planning.
+@end
+@block perso_croyance
+Le collaborateur, {{pick:croyance|list=croyances @DEM/QUASI/BELIEF}}, souhaite ne pas être planifié le samedi.
 @end

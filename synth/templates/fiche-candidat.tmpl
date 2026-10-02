@@ -1,0 +1,44 @@
+type: fiche_candidat
+weight: 1
+---
+FICHE DE SYNTHÈSE CANDIDAT – CONFIDENTIEL
+
+Poste à pourvoir : {{pick:poste|list=postes @DEM/-}} – {{ORG:employeur @ORG/-}}
+Candidat(e) : {{PER:candidat|form=civ_prenom_nom @PERSON/DIRECT}}
+Né(e) le {{date:naissance|rel=birth|format=slash @DATETIME/QUASI}} – nationalité {{pick:nationalite|list=nationalites @DEM/QUASI}}
+Téléphone : {{phone:candidat|form=spaced @CODE/DIRECT}}
+Domicile : {{ADDR:domicile|form=inline @LOC/DIRECT}}
+
+Formation : {{pick:diplome|list=diplomes @DEM/QUASI}}
+Expérience : {{int:annees|min=1|max=20|suffix= ans @DATETIME/QUASI}} chez {{ORG:ancien @ORG/QUASI}}
+
+Entretien du {{date:entretien|rel=recent|format=slash}} mené par {{PER:recruteur|form=prenom_nom @PERSON/DIRECT}}.
+
+Points d'attention :
+{{LINES:point:1-3}}
+
+Décision : {{ONE:retenu,non_retenu}}
+@block point
+- {{ONE:pt_casier,pt_mandat,pt_sante,pt_famille,pt_mobilite}}
+@end
+@block pt_casier
+le bulletin n° 3 du casier judiciaire mentionne {{pick:infraction|list=infractions @MISC/QUASI/OFFENCE}}
+@end
+@block pt_mandat
+le candidat a indiqué être {{pick:politique|list=politique @DEM/QUASI/POLITICS}} et demande des autorisations d'absence
+@end
+@block pt_sante
+bénéficie d'une {{pick:handicap|list=handicaps @DEM/QUASI/HEALTH}}
+@end
+@block pt_famille
+{{pick:situation|list=situations @DEM/QUASI}}, souhaite des horaires fixes
+@end
+@block pt_mobilite
+prêt(e) à déménager à {{ADDR:mobilite|form=city @LOC/QUASI}}
+@end
+@block retenu
+retenu(e) pour un second entretien avec {{PER:manager|form=civ_prenom_nom @PERSON/DIRECT}}
+@end
+@block non_retenu
+non retenu(e)
+@end

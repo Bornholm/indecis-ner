@@ -49,3 +49,23 @@ test	note	Note de la direction sur la gestion d'un conflit entre deux salariés 
 test	formulaire	Dossier de demande de mutation d'un fonctionnaire hospitalier, avec ses motifs.
 test	message	Conversation de messagerie entre une manager et un salarié en arrêt qui l'informe de son état.
 test	rapport	Bilan de fin de période d'essai d'une alternante, avec appréciations détaillées.
+cat-train	courriel	Un salarié demande à poser un jour de congé pour une fête religieuse et explique sa pratique.
+cat-train	courriel	Une salariée élue municipale prévient de ses absences pour les conseils municipaux et parle de son engagement.
+cat-train	courriel	Un manager s'inquiète auprès des RH de propos racistes visant un intérimaire en raison de ses origines.
+cat-train	courriel	Un salarié informe les RH qu'il se marie avec son compagnon et demande les jours de congé prévus pour mariage.
+cat-train	courriel	Une responsable de recrutement découvre une condamnation pénale d'un candidat et demande conseil au juriste.
+cat-train	compte rendu	Compte rendu d'une médiation entre deux salariés après une dispute sur la religion.
+cat-train	compte rendu	Compte rendu d'entretien annuel où le salarié évoque son engagement syndical et militant.
+cat-train	note	Note RH sur l'aménagement des horaires pendant le ramadan pour plusieurs salariés.
+cat-train	note	Note de la direction sur un salarié placé en garde à vue et absent depuis deux jours.
+cat-train	lettre	Lettre d'une salariée en transition de genre demandant la modification de son prénom dans les outils internes.
+cat-train	lettre	Lettre de licenciement pour faute d'un chauffeur après un retrait de permis pour alcoolémie.
+cat-train	message	Messagerie interne où des collègues commentent la candidature d'un collègue aux élections législatives.
+cat-train	message	Conversation où une salariée confie à une collègue qu'elle est lesbienne et victime de remarques.
+cat-train	rapport	Rapport du référent égalité sur des plaintes pour discrimination liée à l'origine dans un entrepôt.
+cat-train	signalement	Signalement par un salarié de pressions liées à son appartenance à une communauté religieuse.
+cat-train	formulaire	Questionnaire de prévention des risques psychosociaux rempli par un salarié qui décrit des moqueries sur son orientation.
+cat-test	courriel	Une salariée explique à sa manager pourquoi elle ne peut pas participer au séminaire organisé pendant une fête religieuse.
+cat-test	rapport	Rapport d'enquête sur un salarié soupçonné de vol, avec ses antécédents judiciaires.
+cat-test	compte rendu	Compte rendu d'une réunion du CSE sur des affiches politiques apposées dans les vestiaires, avec les salariés concernés.
+cat-test	lettre	Lettre d'un salarié d'origine étrangère qui conteste un refus de promotion et évoque une discrimination.
