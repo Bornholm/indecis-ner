@@ -1,6 +1,6 @@
-// Command lexicon records the words of the passages of training sets, by
-// category of a question, and writes the most frequent ones as a list of
-// words a test set must avoid (prose -forbid).
+// Command lexicon records the words that signal each category of a
+// question in training sets (see package lexicon), and writes the most
+// frequent ones as a list of words a test set must avoid (prose -forbid).
 //
 //	lexicon -question sensitive -out data/lexicon data/synth2/train.jsonl data/prose/*train*.jsonl
 package main
@@ -25,7 +25,9 @@ func main() {
 	only := flag.String("categories", "", "categories listed in words.txt, comma-separated (default: all)")
 	skip := flag.String("skip", "", "file of words never written to words.txt, too common to forbid")
 	flag.Parse()
-	lex := lexicon.Lexicon{}
+	minCount := flag.Int("min", 2, "occurrences in a category's passages for a word to signal it")
+	share := flag.Float64("share", 0.3, "share of a word's occurrences in the text that must fall in the category's passages")
+	counter := lexicon.NewCounter()
 	surface := map[string]map[string]int{} // stem -> word forms, for the prompt
 	for _, path := range flag.Args() {
 		ex, err := dataset.ReadFile(path)
@@ -33,12 +35,13 @@ func main() {
 			log.Fatal(err)
 		}
 		for _, e := range ex {
+			counter.AddText(e.Text)
 			list, _ := e.Labels[*question].([]any)
 			for _, item := range list {
 				m := item.(map[string]any)
 				s, en := int(m["start"].(float64)), int(m["end"].(float64))
 				passage := e.Text[s:en]
-				lex.Add(m["type"].(string), passage)
+				counter.AddPassage(m["type"].(string), passage)
 				for _, w := range lexicon.Words(passage) {
 					st := lexicon.Stem(w)
 					if surface[st] == nil {
@@ -50,6 +53,7 @@ func main() {
 		}
 		log.Printf("%s: %d examples", path, len(ex))
 	}
+	lex := counter.Lexicon(*minCount, *share)
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		log.Fatal(err)
 	}

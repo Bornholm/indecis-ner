@@ -1,7 +1,12 @@
-// Package lexicon records the words of the passages of a training set,
-// by category, so that a test set can be checked for passages whose words
-// the model never saw in that category: a score on those measures what
-// the model understood, not which words it memorized.
+// Package lexicon records the words that signal a category in a training
+// set, so that a test set can be checked for passages that contain none
+// of them: a score on those measures what the model understood, not which
+// words it memorized.
+//
+// A word signals a category when it occurs at least twice in that
+// category's passages, and when at least 30% of its occurrences in the
+// whole training text fall inside them: "mosquée" signals beliefs,
+// "chaque" or "midi" do not, though both occur in belief passages.
 //
 // Words are compared by stem: lowercase, without accents, the first six
 // letters ("musulmane" and "musulman" share "musulm"). Stop words and
@@ -20,8 +25,45 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// Lexicon maps a category to the stems seen in its passages, with counts.
+// Lexicon maps a category to the stems that signal it, with their count
+// in its passages.
 type Lexicon map[string]map[string]int
+
+// Counter counts stems in passages and in the whole text, to build a
+// Lexicon.
+type Counter struct {
+	passages Lexicon
+	text     map[string]int
+}
+
+// NewCounter returns an empty counter.
+func NewCounter() *Counter { return &Counter{passages: Lexicon{}, text: map[string]int{}} }
+
+// AddText counts the stems of a whole training text.
+func (c *Counter) AddText(text string) {
+	for _, w := range Words(text) {
+		c.text[Stem(w)]++
+	}
+}
+
+// AddPassage counts the stems of a passage of a category.
+func (c *Counter) AddPassage(category, passage string) { c.passages.Add(category, passage) }
+
+// Lexicon keeps, for each category, the stems that occur at least
+// minCount times in its passages with at least share of their
+// occurrences in the text.
+func (c *Counter) Lexicon(minCount int, share float64) Lexicon {
+	out := Lexicon{}
+	for cat, stems := range c.passages {
+		out[cat] = map[string]int{}
+		for st, n := range stems {
+			if n >= minCount && float64(n) >= share*float64(max(c.text[st], n)) {
+				out[cat][st] = n
+			}
+		}
+	}
+	return out
+}
 
 var stop = map[string]bool{}
 
@@ -67,8 +109,8 @@ func (l Lexicon) Add(category, passage string) {
 	}
 }
 
-// Novel reports whether none of the words of a passage was seen in its
-// category.
+// Novel reports whether a passage contains none of the stems that signal
+// its category.
 func (l Lexicon) Novel(category, passage string) bool {
 	for _, w := range Words(passage) {
 		if l[category][Stem(w)] > 0 {
