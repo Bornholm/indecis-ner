@@ -132,6 +132,28 @@ On the 56 documents Pi agreed with, the scores are the same within a point.
 - Exact bounds stay hard in prose: is the passage "asthme" or "trois crises d'asthme sévères en un mois"? Masking needs the overlap, which is why lenient scores are the ones to read here.
 - Nothing is lost elsewhere: unseen templates 0.977 lenient recall (0.994 before), TAB at bias 3 English quasi 0.929 and French 0.920, precision 0.761 and 0.709.
 
+### Rarer special categories
+
+Beliefs, politics, origin, sexuality and offences were missing or nearly. They now have value lists (`synth/lists`), three training templates (absence request, discrimination report, candidate summary), sections in two others, and a test-only template (confidential HR note); and 20 prose scenarios aimed at them, 4 of them for testing (`cat-train`, `cat-test` in `synth/scenarios.tsv`): 77 training and 20 test documents. A generator bug fixed on the way glued units to numbers ("3mois"); the synthetic corpus was regenerated (`data/synth2`).
+
+`runs/work-cat` trains on everything. Special categories, lenient recall / lenient precision:
+
+| | Targeted prose test (20 docs) | General prose test (98 docs) | Unseen templates (300 docs) |
+| --- | --- | --- | --- |
+| BELIEF | 0.18 / 0.40 (11) | 0.83 / 0.86 (23) | 0.90 / 0.98 (86) |
+| POLITICS | 0.71 / 0.71 (7) | - | 1.00 / 1.00 (42) |
+| ORIGIN | 0.25 / 1.00 (12) | - | 1.00 / 1.00 (29) |
+| SEXUALITY | - | - | 1.00 / 1.00 (21) |
+| OFFENCE | 0.80 / 0.90 (10) | - | 1.00 / 0.96 (51) |
+| HEALTH | - | 0.76 / 0.70 (132) | 0.40 / 0.45 (53) |
+| UNION | 1.00 / 1.00 (5) | 0.71 / 0.93 (17) | - |
+
+Labeled passages in parentheses. `runs/work-prose` found none of BELIEF, POLITICS, ORIGIN, SEXUALITY and OFFENCE on any of these sets.
+
+- The unseen templates draw their values from the same lists as the training templates: perfect scores there say the model recognizes the listed phrasings, not that it generalizes. The targeted prose test is the honest one, and it is small: 7 to 12 passages per category.
+- Offences and politics carry over to new prose; beliefs and origin barely do (0.18 and 0.25 recall). Beliefs did carry over to the general prose test (0.83), where they are stated the way the lists state them.
+- Masking and TAB are unchanged: general prose test 0.962 lenient recall for 0.762 precision, unseen templates 0.988, TAB at bias 3 English quasi 0.929, French 0.920.
+
 ## Using it in go-anon
 
 go-anon's anonymizer takes any `anonymizer.Recognizer`. `recognizer.New` wraps an indecis model and applies go-anon's filters after it, as its own recognizer does after the CRF:
