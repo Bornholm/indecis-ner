@@ -154,6 +154,28 @@ Labeled passages in parentheses. `runs/work-prose` found none of BELIEF, POLITIC
 - Offences and politics carry over to new prose; beliefs and origin barely do (0.18 and 0.25 recall). Beliefs did carry over to the general prose test (0.83), where they are stated the way the lists state them.
 - Masking and TAB are unchanged: general prose test 0.962 lenient recall for 0.762 precision, unseen templates 0.988, TAB at bias 3 English quasi 0.929, French 0.920.
 
+### Words never seen in training
+
+A test that reuses the training vocabulary measures word recognition. `lexicon` records, from all the training data, the words that signal each special category: a stem (first six letters, without accents) that occurs at least twice in the category's passages, with at least 30% of its occurrences in the training text inside them ("mosquée" signals beliefs, "chaque" or "midi" do not). `compare -novel` then scores only the test passages that contain none of these words, and ignores the others along with what the model finds on them.
+
+Measured that way, `runs/work-cat` found **none** of the novel passages of the targeted prose test: its scores came from the words.
+
+So 150 more training documents were written with indirect phrasings (fasting, a pilgrimage, a prison term, leafleting, a husband in a wedding photo: scenarios `ind-train`, 144 kept), the lexicon was rebuilt over all the training data, and 60 test documents (`ind-test`, 56 kept) were written with its 100 most frequent signalling words forbidden. Of their 244 sensitive passages, 114 contain no signalling word. `runs/work-ind` adds the indirect training documents. Lenient recall / precision:
+
+| `ind-test` | work-cat, all | work-ind, all | work-cat, novel | work-ind, novel |
+| --- | --- | --- | --- | --- |
+| BELIEF | 0.08 / 1.00 (49) | 0.33 / 1.00 | 0 (35) | 0.26 / 1.00 |
+| OFFENCE | 0.07 / 1.00 (28) | 0.39 / 0.83 | 0 (13) | 0.08 / 0.25 |
+| ORIGIN | 0 (13) | 0.08 / 1.00 | 0 (12) | 0.08 / 1.00 |
+| POLITICS | 0.13 / 1.00 (15) | 0.13 / 0.67 | 0 (13) | 0 |
+| SEXUALITY | 0 (14) | 0.36 / 0.55 | 0 (10) | 0.20 / 0.29 |
+| HEALTH | 0.41 / 0.89 (69) | 0.86 / 0.83 | 0 (10) | 0.20 / 0.14 |
+| UNION | 0.46 / 0.97 (56) | 0.91 / 0.95 | 0.24 / 0.83 (21) | 0.95 / 0.88 |
+
+- Indirect training documents help, but classifying a special category from words never seen with it stays out of reach: 0 to 26% recall on novel passages, union membership excepted.
+- The passages are masked all the same. A mask overlaps 91% of the sensitive passages of `ind-test` and 78% of the novel ones (work-ind, bias 2): the model sees personal data there, and fails to say which special category it falls under.
+- Masking and TAB are unchanged: `ind-test` 0.956 lenient recall, general prose test 0.959, TAB at bias 3 English quasi 0.933, French 0.922.
+
 ## Using it in go-anon
 
 go-anon's anonymizer takes any `anonymizer.Recognizer`. `recognizer.New` wraps an indecis model and applies go-anon's filters after it, as its own recognizer does after the CRF:
