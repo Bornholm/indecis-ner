@@ -2,8 +2,16 @@
 // interface (anonymizer.Recognizer), in place of the CRF: the
 // anonymizer, its mapping and its strict verification stay go-anon's.
 //
-//	m, _ := indecis.Load("runs/a8m-full", indecis.WithInt8())
-//	r := recognizer.New(m, "entities",
+// Two modes. A model trained on named entities (WikiNER, the "entities"
+// question with PER, LOC, ORG, MISC) replaces the CRF as is. A model
+// trained to mask personal data (the "mask" and "sensitive" questions,
+// GUIDELINES.md) masks the union of both, refined (see Refine), each mask
+// typed from the "entities" question: what matters there is that
+// nothing leaks, and the decoding bias sets how far.
+//
+//	m, _ := indecis.Load("runs/work-ind", indecis.WithInt8(),
+//		indecis.WithSpanBias("mask", 5), indecis.WithSpanBias("sensitive", 5))
+//	r := recognizer.New(m, []string{"mask", "sensitive"},
 //		ner.RegexEntityFilter(ner.BuiltinRegexPatterns),
 //		ner.RegexEntityFilter(ner.SecretPatterns()))
 //	anon := anonymizer.New(r, anonymizer.Config{Strategy: anonymizer.TagReplace})
@@ -17,22 +25,27 @@ import (
 	"github.com/bornholm/indecis"
 )
 
-// Recognizer finds the entities of a text with a Spans question of an
+// Recognizer finds the passages of a text with Spans questions of an
 // indecis model, then applies go-anon's filters (identifiers by regular
 // expression, secrets, confidence threshold), as its own recognizer does
 // after the CRF.
 type Recognizer struct {
-	model    *indecis.Model
-	question string
-	filters  []ner.EntityFilter
+	model     *indecis.Model
+	questions []string
+	filters   []ner.EntityFilter
 	// MinConfidence drops the passages whose confidence is lower.
 	MinConfidence float64
+	// Raw keeps the passages as the model decodes them, typed by their
+	// own question, instead of refining their union.
+	Raw bool
 }
 
-// New wraps model, whose question is a Spans question with go-anon's
-// types (PER, LOC, ORG, MISC).
-func New(model *indecis.Model, question string, filters ...ner.EntityFilter) *Recognizer {
-	return &Recognizer{model: model, question: question, filters: filters}
+// New wraps model. With one question whose types are go-anon's (PER,
+// LOC, ORG, MISC), set Raw. With mask questions ("mask", "sensitive"),
+// their passages are joined and refined, and typed from the model's
+// "entities" question when it has one.
+func New(model *indecis.Model, questions []string, filters ...ner.EntityFilter) *Recognizer {
+	return &Recognizer{model: model, questions: questions, filters: filters}
 }
 
 // Recognize implements anonymizer.Recognizer.
@@ -49,19 +62,76 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 	if err != nil {
 		return nil, err
 	}
-	a, ok := d[0][r.question]
-	if !ok || a.Kind != indecis.Spans {
-		return nil, fmt.Errorf("recognizer: the model has no spans question %q", r.question)
-	}
-	out := make([]ner.Entity, 0, len(a.Spans))
-	for _, s := range a.Spans {
-		if s.Confidence < r.MinConfidence {
-			continue
+	var found []indecis.Span
+	for _, q := range r.questions {
+		a, ok := d[0][q]
+		if !ok || a.Kind != indecis.Spans {
+			return nil, fmt.Errorf("recognizer: the model has no spans question %q", q)
 		}
-		out = append(out, ner.Entity{Text: s.Text, Type: ner.EntityType(s.Type), Start: s.Start, End: s.End, Confidence: s.Confidence})
+		for _, s := range a.Spans {
+			if s.Confidence >= r.MinConfidence {
+				found = append(found, s)
+			}
+		}
+	}
+	var out []ner.Entity
+	if r.Raw {
+		for _, s := range found {
+			out = append(out, ner.Entity{Text: s.Text, Type: ner.EntityType(s.Type), Start: s.Start, End: s.End, Confidence: s.Confidence})
+		}
+	} else {
+		for _, m := range Masks(text, found, d[0]["entities"].Spans) {
+			out = append(out, ner.Entity{Text: text[m.Start:m.End], Type: m.Type, Start: m.Start, End: m.End, Confidence: m.Confidence})
+		}
 	}
 	for _, f := range r.filters {
 		out = f(text, out)
 	}
 	return out, nil
+}
+
+// Mask is a refined mask and its type.
+type Mask struct {
+	Span
+	Type       ner.EntityType
+	Confidence float64
+}
+
+// Masks refines the passages found by the mask questions (Refine) and
+// types each mask from the typed passages of the entities question.
+// Masks of a name or an identifier are not joined to their neighbours:
+// go-anon gives each name its own consistent placeholder.
+func Masks(text string, found, typed []indecis.Span) []Mask {
+	spans := make([]Span, len(found))
+	for i, s := range found {
+		spans[i] = Span{s.Start, s.End}
+	}
+	own := func(s Span) bool {
+		t, _ := typeOf(s, typed, nil)
+		return t == "PERSON" || t == "CODE"
+	}
+	var out []Mask
+	for _, s := range Refine(text, spans, func(a, b Span) bool { return !own(a) && !own(b) }) {
+		typ, conf := typeOf(s, typed, found)
+		out = append(out, Mask{s, typ, conf})
+	}
+	return out
+}
+
+// typeOf names a mask after the typed passage it overlaps most, MISC if
+// none, with the best confidence of the passages it was built from.
+func typeOf(s Span, typed, found []indecis.Span) (ner.EntityType, float64) {
+	typ, best := "MISC", 0
+	for _, t := range typed {
+		if o := min(s.End, t.End) - max(s.Start, t.Start); o > best {
+			typ, best = t.Type, o
+		}
+	}
+	var conf float64
+	for _, f := range found {
+		if f.Start < s.End && s.Start < f.End {
+			conf = max(conf, f.Confidence)
+		}
+	}
+	return ner.EntityType(typ), conf
 }

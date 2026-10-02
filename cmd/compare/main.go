@@ -18,11 +18,14 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/bornholm/go-anon/pkg/features"
 	"github.com/bornholm/go-anon/pkg/ner"
 	"github.com/bornholm/indecis"
 	"github.com/bornholm/indecis-ner/lexicon"
+	"github.com/bornholm/indecis-ner/recognizer"
 	"github.com/bornholm/indecis/dataset"
 )
 
@@ -42,7 +45,7 @@ var types []string
 
 func main() {
 	testPath := flag.String("test", "data/test_clean.jsonl", "labeled examples")
-	question := flag.String("question", "entities", "label holding the entities")
+	question := flag.String("question", "entities", "label holding the entities; several, comma-separated, are scored as their union (mask,sensitive)")
 	crfPath := flag.String("crf", "", "go-anon CRF model (.crf.gz), empty: skip")
 	preset := flag.String("preset", "", `go-anon preset: "", "balanced" or "high-recall" (needs -firstnames)`)
 	firstNames := flag.String("firstnames", "", "first-name gazetteer of the presets (default: the firstnames entry of -gazetteers)")
@@ -53,11 +56,18 @@ func main() {
 	threads := flag.Int("threads", 1, "cores per indecis decision")
 	maxLen := flag.Int("maxlen", 0, "indecis window length in tokens (0: the model's)")
 	merge := flag.Bool("merge", false, "score passages whatever their type: masked or not")
-	novel := flag.String("novel", "", "lexicon of the training set (cmd/lexicon): score only the labeled passages none of whose words the training set had in their category; found passages over the others are ignored")
+	novelFlag := flag.String("novel", "", "lexicon of the training set (cmd/lexicon): score only the labeled passages none of whose words the training set had in their category; found passages over the others are ignored")
 	bias := flag.Float64("bias", 0, "indecis decoding bias towards passages (indecis.WithSpanBias)")
 	jsonOut := flag.String("json", "", "write the scores as JSON to this file")
 	showErrors := flag.Int("errors", 0, "print this many errors per engine")
+	showLeaks := flag.Int("leaks", 0, "print this many labeled passages left partly or fully unmasked")
+	showExtra := flag.Int("extra", 0, "print this many found passages that overlap no labeled one")
+	refine := flag.Bool("refine", false, "grow indecis masks to whole words, drop function-word masks, join masks over function words (recognizer.Refine); implies -merge")
 	flag.Parse()
+	novel := novelFlag
+	if *refine {
+		*merge = true
+	}
 
 	examples, err := dataset.ReadFile(*testPath)
 	if err != nil {
@@ -74,9 +84,15 @@ func main() {
 	ignored := make([][]entity, len(examples)) // labeled but not novel
 	kept, dropped := 0, 0
 	texts := make([]string, len(examples))
+	questions := strings.Split(*question, ",")
 	for i, e := range examples {
 		texts[i] = e.Text
-		list, _ := e.Labels[*question].([]any)
+		var list []any
+		for _, q := range questions {
+			l, _ := e.Labels[q].([]any)
+			list = append(list, l...)
+		}
+		seen := map[entity]bool{}
 		for _, item := range list {
 			m := item.(map[string]any)
 			typ := m["type"].(string)
@@ -89,6 +105,10 @@ func main() {
 				dropped++
 				continue
 			}
+			if seen[ent] {
+				continue // the same passage under two questions
+			}
+			seen[ent] = true
 			kept++
 			gold[i] = append(gold[i], ent)
 			seenTypes[typ] = true
@@ -115,7 +135,10 @@ func main() {
 			continue
 		}
 		var opts []indecis.Option
-		opts = append(opts, indecis.WithThreads(*threads), indecis.WithSpanBias(*question, *bias))
+		opts = append(opts, indecis.WithThreads(*threads))
+		for _, q := range questions {
+			opts = append(opts, indecis.WithSpanBias(q, *bias))
+		}
 		if *maxLen > 0 {
 			opts = append(opts, indecis.WithMaxLen(*maxLen))
 		}
@@ -127,6 +150,9 @@ func main() {
 			log.Fatal(err)
 		}
 		name := "indecis " + dir
+		if *refine {
+			name += " refined"
+		}
 		if *bias != 0 {
 			name += fmt.Sprintf(" bias %g", *bias)
 		}
@@ -141,12 +167,24 @@ func main() {
 				if err != nil {
 					return nil, err
 				}
-				for _, s := range d[0][*question].Spans {
-					typ := s.Type
-					if *merge {
-						typ = "ANY"
+				var spans []indecis.Span
+				for _, q := range questions {
+					for _, s := range d[0][q].Spans {
+						typ := s.Type
+						if *merge {
+							typ = "ANY"
+						}
+						if *refine {
+							spans = append(spans, s)
+							continue
+						}
+						out[i] = append(out[i], entity{s.Start, s.End, typ})
 					}
-					out[i] = append(out[i], entity{s.Start, s.End, typ})
+				}
+				if *refine {
+					for _, m := range recognizer.Masks(t, spans, d[0]["entities"].Spans) {
+						out[i] = append(out[i], entity{m.Start, m.End, "ANY"})
+					}
 				}
 			}
 			return out, nil
@@ -167,6 +205,7 @@ func main() {
 		found = withoutIgnored(found, ignored)
 		elapsed := time.Since(start)
 		r := score(e.name, gold, found)
+		r.Chars = leakage(texts, gold, found, ignored)
 		r.Seconds = elapsed.Seconds()
 		r.MsPerText = 1000 * elapsed.Seconds() / float64(len(texts))
 		r.MsPer1kBytes = 1000 * elapsed.Seconds() / (float64(chars) / 1000)
@@ -174,6 +213,12 @@ func main() {
 		r.print()
 		if *showErrors > 0 {
 			printErrors(texts, gold, found, *showErrors)
+		}
+		if *showLeaks > 0 {
+			printLeaks(texts, examples, questions, found, *showLeaks)
+		}
+		if *showExtra > 0 {
+			printExtra(texts, gold, found, *showExtra)
 		}
 	}
 	if *jsonOut != "" {
@@ -293,6 +338,99 @@ type result struct {
 	Seconds      float64  `json:"seconds"`
 	MsPerText    float64  `json:"ms_per_text"`
 	MsPer1kBytes float64  `json:"ms_per_1k_bytes"`
+	Chars        chars    `json:"chars"`
+}
+
+// chars measures masking character by character, whatever the types:
+// spaces and punctuation are not counted, as in TAB's token measures.
+type chars struct {
+	Labeled int `json:"labeled"` // characters of labeled passages
+	Leaked  int `json:"leaked"`  // of those, left unmasked
+	Masked  int `json:"masked"`  // characters masked
+	// Right is the number of masked characters that belong to a labeled
+	// passage.
+	Right int `json:"right"`
+	// CleanDocs is the number of documents with no labeled character left
+	// unmasked.
+	CleanDocs int `json:"clean_docs"`
+	Docs      int `json:"docs"`
+}
+
+// functionWords carry no information on their own: like TAB's measures,
+// which leave out determiners and prepositions, the leak counts don't
+// include them.
+var functionWords = map[string]bool{}
+
+func init() {
+	for _, w := range strings.Fields(`le la les l un une des de du d au aux a à en sur dans par pour avec chez sous et ou mais son sa ses mon ma mes ton ta tes notre nos votre vos leur leurs ce cet cette ces qui que qu il elle ils elles on se s y the of a an in on at to and`) {
+		functionWords[w] = true
+	}
+}
+
+// markFunctionWords flags the bytes of the function words of a text.
+func markFunctionWords(t string, skip []bool) {
+	start := -1
+	for k, r := range t + " " {
+		letter := unicode.IsLetter(r)
+		if letter && start < 0 {
+			start = k
+		}
+		if !letter && start >= 0 {
+			if functionWords[strings.ToLower(t[start:k])] {
+				for j := start; j < k; j++ {
+					skip[j] = true
+				}
+			}
+			start = -1
+		}
+	}
+}
+
+// leakage compares the characters covered by the labeled passages with
+// those covered by the found ones. Ignored passages (see -novel) and
+// function words count on neither side.
+func leakage(texts []string, gold, found, ignored [][]entity) chars {
+	var c chars
+	for i, t := range texts {
+		g := make([]bool, len(t))
+		f := make([]bool, len(t))
+		skip := make([]bool, len(t))
+		markFunctionWords(t, skip)
+		mark := func(m []bool, es []entity) {
+			for _, e := range es {
+				for k := max(e.start, 0); k < min(e.end, len(t)); k++ {
+					m[k] = true
+				}
+			}
+		}
+		mark(g, gold[i])
+		mark(f, found[i])
+		mark(skip, ignored[i])
+		leaked := 0
+		for k, r := range t { // k: start of each character
+			if skip[k] || unicode.IsSpace(r) || unicode.IsPunct(r) {
+				continue
+			}
+			if g[k] {
+				c.Labeled++
+				if !f[k] {
+					c.Leaked++
+					leaked++
+				}
+			}
+			if f[k] {
+				c.Masked++
+				if g[k] {
+					c.Right++
+				}
+			}
+		}
+		c.Docs++
+		if leaked == 0 {
+			c.CleanDocs++
+		}
+	}
+	return c
 }
 
 func (c *counts) finish() {
@@ -374,6 +512,11 @@ func (r result) print() {
 		}
 		fmt.Printf("  %-5s %6d %6d %6.3f %6.3f %6.3f %6.3f %8.3f %8.3f\n", t, c.Gold, c.Found, c.Precision, c.Recall, c.F1, c.F2, c.LenientRecall, c.LenientPrecision)
 	}
+	ch := r.Chars
+	if ch.Labeled > 0 && ch.Masked > 0 {
+		fmt.Printf("  characters: %.1f%% of the labeled ones leaked (%d of %d), %.1f%% of the masked ones labeled, %d of %d documents without a leak\n",
+			100*float64(ch.Leaked)/float64(ch.Labeled), ch.Leaked, ch.Labeled, 100*float64(ch.Right)/float64(ch.Masked), ch.CleanDocs, ch.Docs)
+	}
 }
 
 func printErrors(texts []string, gold, found [][]entity, n int) {
@@ -427,4 +570,76 @@ func withoutIgnored(found, ignored [][]entity) [][]entity {
 		}
 	}
 	return out
+}
+
+// printLeaks prints labeled passages with characters left unmasked, the
+// unmasked part in brackets, with their labels under every question.
+func printLeaks(texts []string, examples []dataset.Example, questions []string, found [][]entity, n int) {
+	shown := 0
+	for i, t := range texts {
+		covered := make([]bool, len(t))
+		for _, f := range found[i] {
+			for k := max(f.start, 0); k < min(f.end, len(t)); k++ {
+				covered[k] = true
+			}
+		}
+		for _, q := range questions {
+			list, _ := examples[i].Labels[q].([]any)
+			for _, item := range list {
+				m := item.(map[string]any)
+				s, e := int(m["start"].(float64)), int(m["end"].(float64))
+				var b strings.Builder
+				leak, open := false, false
+				for k, r := range t[s:e] {
+					in := !covered[s+k] && !unicode.IsSpace(r) && !unicode.IsPunct(r)
+					if in && !open {
+						b.WriteString("[")
+						open = true
+					} else if !in && open && !unicode.IsSpace(r) {
+						b.WriteString("]")
+						open = false
+					}
+					leak = leak || in
+					b.WriteRune(r)
+				}
+				if open {
+					b.WriteString("]")
+				}
+				if leak {
+					fmt.Printf("  %-9s %-9s %s\n", q, m["type"], b.String())
+					if shown++; shown >= n {
+						return
+					}
+				}
+			}
+		}
+	}
+}
+
+// printExtra prints found passages that overlap no labeled passage, with
+// some context.
+func printExtra(texts []string, gold, found [][]entity, n int) {
+	shown := 0
+	for i, t := range texts {
+	next:
+		for _, f := range found[i] {
+			for _, g := range gold[i] {
+				if f.start < g.end && g.start < f.end {
+					continue next
+				}
+			}
+			a, b := max(f.start-40, 0), min(f.end+40, len(t))
+			for a > 0 && !utf8.RuneStart(t[a]) {
+				a--
+			}
+			for b < len(t) && !utf8.RuneStart(t[b]) {
+				b++
+			}
+			ctx := strings.ReplaceAll(t[a:f.start]+"[["+t[f.start:f.end]+"]]"+t[f.end:b], "\n", " ")
+			fmt.Printf("  %s\n", ctx)
+			if shown++; shown >= n {
+				return
+			}
+		}
+	}
 }

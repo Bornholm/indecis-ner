@@ -176,19 +176,48 @@ So 150 more training documents were written with indirect phrasings (fasting, a 
 - The passages are masked all the same. A mask overlaps 91% of the sensitive passages of `ind-test` and 78% of the novel ones (work-ind, bias 2): the model sees personal data there, and fails to say which special category it falls under.
 - Masking and TAB are unchanged: `ind-test` 0.956 lenient recall, general prose test 0.959, TAB at bias 3 English quasi 0.933, French 0.922.
 
+### Leaks
+
+What matters is how much personal data stays readable, not whether each passage gets the right type or exact bounds. `compare -question mask,sensitive -merge` scores the union of the two questions against the union of their labels, and reports characters: the share of the characters of labeled passages left unmasked (the leak), the share of masked characters that belong to a labeled passage, and the documents with no leak. Spaces, punctuation and function words (articles, prepositions, possessives) are not counted, as TAB leaves them out: an unmasked "le" before a masked "service de pneumologie" leaks nothing.
+
+`-refine` applies what the go-anon adapter does (`recognizer.Masks`): masks grow to whole words ("[[é]]crasé" is masked as "écrasé"), masks of function words alone are dropped, and masks separated only by function words and commas are joined ("magasinier sur le site de Stains" becomes one mask), except across a sentence and except for names and identifiers, which keep their own placeholder.
+
+`runs/work-ind`, int8, refined, by decoding bias:
+
+| Test set | Bias 0 | Bias 4 | Bias 5 | Bias 6 |
+| --- | --- | --- | --- | --- |
+| Prose, 98 docs: leaked / masked right / docs without a leak | 15.8% / 86% / 2 | 3.0% / 68% / 49 | 2.0% / 63% / 61 | 1.3% / 58% / 73 |
+| Indirect prose, 56 docs | 19.0% / 82% / 2 | 6.2% / 66% / 11 | 3.9% / 61% / 18 | 2.4% / 57% / 27 |
+| Targeted prose, 20 docs | 14.2% / 80% / 1 | 5.8% / 62% / 4 | 3.4% / 57% / 9 | 2.1% / 52% / 14 |
+| Unseen templates, 300 docs | 3.3% / 78% / 149 | 1.6% / 72% / 196 | 1.1% / 69% / 226 | 0.5% / 68% / 264 |
+
+- The bias is the lever: from 0 to 6, the leak in prose falls from 16% to 1.3%, and the documents without any leak from 2 to 73 of 98.
+- The cost is extra masks: at bias 5, about 40% of the masked characters belong to no labeled passage. Some are personal data the labels missed ("hospitalisé et son pronostic", the date of an accident); some are not.
+- What still leaks at bias 6 (`compare -leaks`): relatives and family situation ("conjoint", "Parent isolé", "Sa femme"), some health details ("infiltration"), generic roles ("la trésorière du CSE"), and events ("une procédure d'expulsion").
+- Bias 5 is a reasonable default for the go-anon adapter; 6 when every leak counts more than readability.
+
 ## Using it in go-anon
 
 go-anon's anonymizer takes any `anonymizer.Recognizer`. `recognizer.New` wraps an indecis model and applies go-anon's filters after it, as its own recognizer does after the CRF:
 
 ```go
 m, _ := indecis.Load("runs/a8m-group", indecis.WithInt8())
-r := recognizer.New(m, "entities",
+r := recognizer.New(m, []string{"entities"},
 	ner.RegexEntityFilter(ner.BuiltinRegexPatterns),
 	ner.RegexEntityFilter(ner.SecretPatterns()))
+r.Raw = true
 anon := anonymizer.New(r, anonymizer.Config{Strategy: anonymizer.TagReplace, ConsistentMap: true})
 ```
 
 `TestAnonymizeWithIndecis` runs it with strict verification and checks the round trip.
+
+To mask personal and sensitive data rather than named entities, load a masking model with a bias and give the adapter the two mask questions; it joins and refines their passages and types each mask from the `entities` question (`TestMaskWithIndecis`):
+
+```go
+m, _ := indecis.Load("runs/work-ind", indecis.WithInt8(),
+	indecis.WithSpanBias("mask", 5), indecis.WithSpanBias("sensitive", 5))
+r := recognizer.New(m, []string{"mask", "sensitive"}, ner.RegexEntityFilter(ner.BuiltinRegexPatterns))
+```
 
 ## Status
 
