@@ -4,6 +4,7 @@
 //
 //	prose -split train -n 400 -out data/prose
 //	prose -split test -n 100 -out data/prose
+//	prose -split ind-test -n 50 -instructions "..." -forbid data/lexicon/words.txt
 //
 // Each document gets a scenario of synth/scenarios.tsv (train and test
 // scenarios differ), and a cast drawn by go-anon's generators: people,
@@ -112,7 +113,21 @@ func main() {
 	checker := flag.String("checker", "cadoles/minimax-m3", "Pi model that checks (empty: no check)")
 	concurrency := flag.Int("concurrency", 2, "documents in progress at once")
 	interval := flag.Duration("interval", 5*time.Second, "minimum time between two calls of a model")
+	extra := flag.String("instructions", "", "instruction added to every brief")
+	forbid := flag.String("forbid", "", "file of words the documents must not use, one per line")
 	flag.Parse()
+	var forbidden []string
+	if *forbid != "" {
+		b, err := os.ReadFile(*forbid)
+		if err != nil {
+			log.Fatal(err)
+		}
+		for _, w := range strings.Split(string(b), "\n") {
+			if w = strings.TrimSpace(w); w != "" {
+				forbidden = append(forbidden, w)
+			}
+		}
+	}
 
 	scenarios, err := readScenarios("synth/scenarios.tsv", *split)
 	if err != nil {
@@ -137,6 +152,12 @@ func main() {
 		rng := rand.New(rand.NewSource(*seed*1_000_003 + int64(i)))
 		sc := scenarios[i%len(scenarios)]
 		prompt := brief(sc, rng, bundle)
+		if *extra != "" {
+			prompt += "\nConsigne : " + *extra + "\n"
+		}
+		if len(forbidden) > 0 {
+			prompt += "\nN'emploie aucun de ces mots ni aucun mot de la même famille, pour les données sensibles : " + strings.Join(forbidden, ", ") + ".\n"
+		}
 		id := fmt.Sprintf("%s-%04d", *split, i)
 		wg.Add(1)
 		sem <- struct{}{}

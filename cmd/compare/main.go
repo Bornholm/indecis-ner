@@ -22,6 +22,7 @@ import (
 	"github.com/bornholm/go-anon/pkg/features"
 	"github.com/bornholm/go-anon/pkg/ner"
 	"github.com/bornholm/indecis"
+	"github.com/bornholm/indecis-ner/lexicon"
 	"github.com/bornholm/indecis/dataset"
 )
 
@@ -52,6 +53,7 @@ func main() {
 	threads := flag.Int("threads", 1, "cores per indecis decision")
 	maxLen := flag.Int("maxlen", 0, "indecis window length in tokens (0: the model's)")
 	merge := flag.Bool("merge", false, "score passages whatever their type: masked or not")
+	novel := flag.String("novel", "", "lexicon of the training set (cmd/lexicon): score only the labeled passages none of whose words the training set had in their category; found passages over the others are ignored")
 	bias := flag.Float64("bias", 0, "indecis decoding bias towards passages (indecis.WithSpanBias)")
 	jsonOut := flag.String("json", "", "write the scores as JSON to this file")
 	showErrors := flag.Int("errors", 0, "print this many errors per engine")
@@ -61,8 +63,16 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	var lex lexicon.Lexicon
+	if *novel != "" {
+		if lex, err = lexicon.Load(*novel); err != nil {
+			log.Fatal(err)
+		}
+	}
 	seenTypes := map[string]bool{}
 	gold := make([][]entity, len(examples))
+	ignored := make([][]entity, len(examples)) // labeled but not novel
+	kept, dropped := 0, 0
 	texts := make([]string, len(examples))
 	for i, e := range examples {
 		texts[i] = e.Text
@@ -73,9 +83,19 @@ func main() {
 			if *merge {
 				typ = "ANY"
 			}
-			gold[i] = append(gold[i], entity{int(m["start"].(float64)), int(m["end"].(float64)), typ})
+			ent := entity{int(m["start"].(float64)), int(m["end"].(float64)), typ}
+			if lex != nil && !lex.Novel(m["type"].(string), e.Text[ent.start:ent.end]) {
+				ignored[i] = append(ignored[i], ent)
+				dropped++
+				continue
+			}
+			kept++
+			gold[i] = append(gold[i], ent)
 			seenTypes[typ] = true
 		}
+	}
+	if lex != nil {
+		log.Printf("%d novel labeled passages scored, %d ignored (words seen in training)", kept, dropped)
 	}
 	for t := range seenTypes {
 		types = append(types, t)
@@ -144,6 +164,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		found = withoutIgnored(found, ignored)
 		elapsed := time.Since(start)
 		r := score(e.name, gold, found)
 		r.Seconds = elapsed.Seconds()
@@ -387,4 +408,23 @@ func printErrors(texts []string, gold, found [][]entity, n int) {
 			return
 		}
 	}
+}
+
+// withoutIgnored drops the found passages that overlap an ignored labeled
+// passage of the same type: they are neither right nor wrong for the
+// novel subset.
+func withoutIgnored(found, ignored [][]entity) [][]entity {
+	out := make([][]entity, len(found))
+	for i, fs := range found {
+	next:
+		for _, f := range fs {
+			for _, g := range ignored[i] {
+				if f.typ == g.typ && f.start < g.end && g.start < f.end {
+					continue next
+				}
+			}
+			out[i] = append(out[i], f)
+		}
+	}
+	return out
 }

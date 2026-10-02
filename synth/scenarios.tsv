@@ -69,3 +69,33 @@ cat-test	courriel	Une salariée explique à sa manager pourquoi elle ne peut pas
 cat-test	rapport	Rapport d'enquête sur un salarié soupçonné de vol, avec ses antécédents judiciaires.
 cat-test	compte rendu	Compte rendu d'une réunion du CSE sur des affiches politiques apposées dans les vestiaires, avec les salariés concernés.
 cat-test	lettre	Lettre d'un salarié d'origine étrangère qui conteste un refus de promotion et évoque une discrimination.
+ind-train	courriel	Un salarié demande à décaler sa pause déjeuner pendant un mois de jeûne, sans jamais nommer sa religion.
+ind-train	courriel	Une salariée explique qu'elle ne pourra pas travailler le vendredi soir ni le samedi, pour des raisons familiales et cultuelles qu'elle décrit par ses pratiques.
+ind-train	courriel	Une collègue raconte à une autre que leur chef a été vu tractant sur un marché pour un candidat.
+ind-train	courriel	Un salarié prévient qu'il a une audience au tribunal pour une affaire qui le concerne personnellement.
+ind-train	courriel	Une manager organise un pot pour le mariage d'un salarié avec son conjoint, en évitant les maladresses.
+ind-train	compte rendu	Compte rendu d'une réunion d'équipe où l'on évoque les repas de la cantine et les régimes alimentaires de chacun.
+ind-train	compte rendu	Compte rendu d'un entretien de recrutement où le candidat évoque ses années passées en détention.
+ind-train	compte rendu	Compte rendu d'entretien où une salariée évoque son pays natal, sa langue maternelle et sa famille restée là-bas.
+ind-train	note	Note de la direction sur un salarié qui affiche ses convictions par ses tenues et ses signes.
+ind-train	note	Note RH sur un salarié dont le permis a été annulé après une décision de justice.
+ind-train	lettre	Lettre d'un salarié qui demande un congé pour accompagner un pèlerinage.
+ind-train	lettre	Lettre d'une salariée qui demande la modification de son état civil dans les fichiers du personnel.
+ind-train	message	Messagerie où des collègues commentent l'engagement d'une salariée dans une association militante et ses tracts.
+ind-train	message	Conversation entre collègues sur les remarques faites à un intérimaire au sujet de son accent et de son quartier.
+ind-train	rapport	Rapport du service de sécurité après la découverte d'antécédents de fraude chez un salarié du service caisse.
+ind-train	rapport	Rapport d'un manager sur des tensions dans l'équipe liées à la vie de couple d'un salarié avec une personne du même sexe.
+ind-train	formulaire	Fiche de mutuelle où un salarié déclare son conjoint de même sexe comme ayant droit.
+ind-train	formulaire	Demande d'autorisation de cumul d'activités d'un agent qui siège dans une instance politique locale.
+ind-train	signalement	Signalement par une salariée de remarques sur son foulard et ses prières.
+ind-train	courriel	Un salarié explique qu'il ne pourra pas participer au repas d'équipe à cause de ses interdits alimentaires.
+ind-test	courriel	Une salariée demande à ne pas être planifiée lors d'une fête familiale et religieuse importante pour elle.
+ind-test	compte rendu	Compte rendu d'une commission disciplinaire qui évoque le passé judiciaire d'un salarié.
+ind-test	rapport	Rapport sur les difficultés d'intégration d'un salarié récemment arrivé de l'étranger.
+ind-test	message	Messagerie où des collègues découvrent que leur responsable se présente aux élections municipales.
+ind-test	lettre	Lettre d'un salarié qui se plaint de moqueries sur sa vie de couple.
+ind-test	note	Note sur l'aménagement d'un local de prière demandé par plusieurs salariés.
+ind-test	signalement	Signalement de propos sur l'origine et la couleur de peau d'un livreur.
+ind-test	compte rendu	Compte rendu d'entretien annuel d'un salarié très engagé dans la vie politique de sa commune.
+ind-test	courriel	Une manager informe les RH qu'un salarié vient de sortir de prison et reprend en semi-liberté.
+ind-test	formulaire	Formulaire de déclaration d'ayants droit à la mutuelle mentionnant le partenaire d'une salariée.
