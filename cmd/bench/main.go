@@ -13,6 +13,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"runtime"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -56,12 +59,27 @@ func main() {
 			indecis.NewSpans("sensitive", "", "HEALTH", "UNION", "BELIEF", "POLITICS", "ORIGIN", "SEXUALITY", "OFFENCE"),
 		}
 		m, err = indecis.New(*backbone, schema, 1, append(opts, indecis.WithMaxLen(*maxLen))...)
+		if err == nil {
+			// Saved then loaded, as a trained model is served: the
+			// weights are then read in place instead of in float32.
+			dir, derr := os.MkdirTemp("", "bench-model-")
+			if derr != nil {
+				log.Fatal(derr)
+			}
+			defer os.RemoveAll(dir)
+			if err := m.Save(dir); err != nil {
+				log.Fatal(err)
+			}
+			m = nil
+			runtime.GC()
+			debug.FreeOSMemory()
+			m, err = indecis.Load(dir, opts...)
+		}
 	}
 	if err != nil {
 		log.Fatal(err)
 	}
-	tokens, _ := m.Tokens(indecis.Input{Text: text})
-	_ = tokens
+	loaded := memory()
 	ctx := context.Background()
 	if _, err := m.Decide(ctx, text); err != nil { // warm-up: packing, pages
 		log.Fatal(err)
@@ -76,4 +94,28 @@ func main() {
 	}
 	avg := total / time.Duration(*runs)
 	fmt.Printf("%d characters, %d words: %.2f s (%.0f ms per page)\n", len([]rune(text)), len(strings.Fields(text)), avg.Seconds(), avg.Seconds()*1000/float64(*pages))
+	end := memory()
+	fmt.Printf("memory after loading: %s\nmemory after the runs: %s\n", loaded, end)
+}
+
+// memory reads the process's memory from /proc: resident (current and
+// peak), and how much of it is its own (anonymous) or mapped files (the
+// weights, read in place, shared and reclaimable).
+func memory() string {
+	b, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		return "unavailable"
+	}
+	v := map[string]string{}
+	for _, line := range strings.Split(string(b), "\n") {
+		if k, val, ok := strings.Cut(line, ":"); ok {
+			v[k] = strings.TrimSpace(val)
+		}
+	}
+	mb := func(k string) string {
+		var kb int
+		fmt.Sscanf(v[k], "%d", &kb)
+		return fmt.Sprintf("%d MB", kb/1024)
+	}
+	return fmt.Sprintf("resident %s (peak %s), own %s, mapped files %s", mb("VmRSS"), mb("VmHWM"), mb("RssAnon"), mb("RssFile"))
 }
