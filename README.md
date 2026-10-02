@@ -105,6 +105,33 @@ ORG and DEM are token recalls. A fifth of the training set in French halves the 
 - Special categories do not generalize: on unseen templates, HEALTH recall is 0.27 for 0.08 precision. The template lists are too small for the model to learn what a health datum is rather than which ones exist.
 - TAB is not hurt: at a bias of 3 (the synthetic dev set changed the calibration), English test recall 0.931, quasi 0.922, precision 0.785; French quasi 0.909, precision 0.738, as without the synthetic documents.
 
+### Documents in prose
+
+Templates give structure, not language. `prose` has Claude Sonnet write documents in prose (emails, appraisal and meeting reports, letters, notes, chat threads), its labels inline with markers ⟦TYPE/MASK/SENSITIVE⟧…⟦/⟧ following `GUIDELINES.md`, from a scenario (`synth/scenarios.tsv`) and a cast drawn by go-anon's generators so that names do not repeat. Pi (minimax) then checks the labels. The 10 test scenarios are genres absent from the 40 training ones: accident inquiry, harassment report, settlement agreement, testimony for an employment tribunal, social aid committee...
+
+388 of 400 training documents and 98 of 100 test documents came back with well-formed markers (a second pass retried the malformed ones). Pi changed no masking decision on 240 and 56 of them; its remarks are in `data/prose/*_review.jsonl`.
+
+`runs/work-prose` adds the 388 training documents to `runs/work-a8m`'s data. Masking, any decision, int8, on the 98 test documents. Lenient: a passage counts as found if a mask overlaps it, and a mask counts as right if it overlaps a labeled passage.
+
+| Prose test, 98 documents, bias 2 | Lenient recall | Lenient precision | Exact recall | Exact precision |
+| --- | --- | --- | --- | --- |
+| work-a8m (TAB, templates) | 0.875 | 0.696 | 0.657 | 0.481 |
+| work-prose (+ prose) | 0.957 | 0.782 | 0.745 | 0.574 |
+
+On the 56 documents Pi agreed with, the scores are the same within a point.
+
+| Special categories, prose test | Labeled | Lenient recall | Lenient precision |
+| --- | --- | --- | --- |
+| HEALTH, work-a8m | 132 | 0.765 | 0.349 |
+| HEALTH, work-prose | 132 | 0.712 | 0.717 |
+| UNION, work-prose | 17 | 0.706 | 0.923 |
+| BELIEF, work-prose | 23 | 0 | - |
+
+- Prose training documents lift recall on unseen genres from 0.875 to 0.957, with fewer extra masks.
+- Health data are found about as often but far more precisely. Beliefs are never found: the training data hold too few of them (77 template passages).
+- Exact bounds stay hard in prose: is the passage "asthme" or "trois crises d'asthme sévères en un mois"? Masking needs the overlap, which is why lenient scores are the ones to read here.
+- Nothing is lost elsewhere: unseen templates 0.977 lenient recall (0.994 before), TAB at bias 3 English quasi 0.929 and French 0.920, precision 0.761 and 0.709.
+
 ## Using it in go-anon
 
 go-anon's anonymizer takes any `anonymizer.Recognizer`. `recognizer.New` wraps an indecis model and applies go-anon's filters after it, as its own recognizer does after the CRF:

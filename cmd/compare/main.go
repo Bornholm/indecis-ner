@@ -259,6 +259,10 @@ type counts struct {
 	// LenientRecall: share of the labeled entities overlapped by a found
 	// entity of the same type, what masking cares about.
 	LenientRecall float64 `json:"lenient_recall"`
+	// LenientPrecision: share of the found entities that overlap a labeled
+	// one of the same type.
+	LenientPrecision float64 `json:"lenient_precision"`
+	overlapping      int
 }
 
 type result struct {
@@ -282,6 +286,7 @@ func (c *counts) finish() {
 	c.F1 = div(2*c.Precision*c.Recall, c.Precision+c.Recall)
 	c.F2 = div(5*c.Precision*c.Recall, 4*c.Precision+c.Recall)
 	c.LenientRecall = div(float64(c.Lenient), float64(c.Gold))
+	c.LenientPrecision = div(float64(c.overlapping), float64(c.Found))
 }
 
 func score(name string, gold, found [][]entity) result {
@@ -315,6 +320,13 @@ func score(name string, gold, found [][]entity) result {
 			}
 			c.Found++
 			all.Found++
+			for _, g := range gold[i] {
+				if f.typ == g.typ && f.start < g.end && g.start < f.end {
+					c.overlapping++
+					all.overlapping++
+					break
+				}
+			}
 			if exact[f] {
 				c.Strict++
 				all.Strict++
@@ -333,13 +345,13 @@ func score(name string, gold, found [][]entity) result {
 
 func (r result) print() {
 	fmt.Printf("\n%s  (%.1f s, %.1f ms/text, %.2f ms/kB)\n", r.Engine, r.Seconds, r.MsPerText, r.MsPer1kBytes)
-	fmt.Printf("  %-5s %6s %6s %6s %6s %6s %6s %8s\n", "type", "gold", "found", "P", "R", "F1", "F2", "R(lenient)")
+	fmt.Printf("  %-5s %6s %6s %6s %6s %6s %6s %8s %8s\n", "type", "gold", "found", "P", "R", "F1", "F2", "R(lenient)", "P(lenient)")
 	for _, c := range append(r.Types, r.All) {
 		t := c.Type
 		if t == "" {
 			t = "all"
 		}
-		fmt.Printf("  %-5s %6d %6d %6.3f %6.3f %6.3f %6.3f %8.3f\n", t, c.Gold, c.Found, c.Precision, c.Recall, c.F1, c.F2, c.LenientRecall)
+		fmt.Printf("  %-5s %6d %6d %6.3f %6.3f %6.3f %6.3f %8.3f %8.3f\n", t, c.Gold, c.Found, c.Precision, c.Recall, c.F1, c.F2, c.LenientRecall, c.LenientPrecision)
 	}
 }
 
