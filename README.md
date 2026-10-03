@@ -196,6 +196,23 @@ What matters is how much personal data stays readable, not whether each passage 
 - What still leaks at bias 6 (`compare -leaks`): relatives and family situation ("conjoint", "Parent isolé", "Sa femme"), some health details ("infiltration"), generic roles ("la trésorière du CSE"), and events ("une procédure d'expulsion").
 - Bias 5 is a reasonable default for the go-anon adapter; 6 when every leak counts more than readability.
 
+### Relatives, family situation, life events
+
+What leaked most at bias 6 was relatives, family situations and life events. 26 scenarios aimed at them (bereavement, divorce and custody, eviction, debt, domestic violence, caring for a relative, adoption: `fam-train`, `fam-test`) gave 113 training and 29 test documents, the writer asked for at least five such passages each. `runs/work-fam` adds them to `runs/work-ind`'s data.
+
+Characters leaked overstate what leaks in long passages: in "divorce [prononcé le] 12/02/2024", the unmasked words reveal nothing once the date and "divorce" are masked. `compare` therefore also counts the exposed passages, those of which less than half the counted characters are masked.
+
+| Bias 6, refined | work-ind: chars leaked / passages exposed | work-fam: chars leaked / passages exposed |
+| --- | --- | --- |
+| Family test, 29 docs (720 passages) | 5.5% / 3.6% | 4.7% / 2.4% |
+| Prose, 98 docs (2,054) | 1.3% / 1.1% | 1.1% / 0.9% |
+| Indirect prose, 56 docs (1,053) | 2.4% / 1.1% | 2.6% / 1.3% |
+| Unseen templates, 300 docs (3,033) | 0.5% / 0.2% | 0.7% / 0.4% |
+
+- On family data, a third fewer passages are exposed; elsewhere the differences are a few passages either way. The share of masked characters that are labeled does not move (62% on the family test, 59% in prose at bias 6). TAB is unchanged (bias 3: English quasi 0.933, French 0.923).
+- What is still exposed: situations stated in a few common words ("sans logement", "en arrêt prolongé", "La pension alimentaire", "a repris un emploi salarié"), and unnamed services ("Direction des ressources humaines", "la plateforme Indemnisation").
+- `runs/work-fam` is now the default model of `indecis-anon`.
+
 ### A larger backbone: a25m
 
 `runs/work-ind-a25m` is `runs/work-ind` trained on bekko-embedding-v1-a25m (13 layers instead of 4, same width): same data, same settings, about 6 hours instead of 2 (690 tokens per second, 6.6 GB at its peak).
@@ -250,7 +267,7 @@ r := recognizer.New(m, []string{"mask", "sensitive"}, ner.RegexEntityFilter(ner.
 
 ```bash
 make build
-bin/indecis-anon -model runs/work-ind -bias 5 -strict -input note.docx -output note_anon.docx
+bin/indecis-anon -model runs/work-fam -bias 5 -strict -input note.docx -output note_anon.docx
 ```
 
 `-bias` sets how far it masks (see Leaks): 5 by default, 6 when leaks matter more than readability. Not carried over from anon-doc: the hash strategy and the encrypted mapping store, internal to go-anon's commands (`-save-mapping-insecure` writes the mapping in clear).

@@ -354,6 +354,10 @@ type chars struct {
 	// unmasked.
 	CleanDocs int `json:"clean_docs"`
 	Docs      int `json:"docs"`
+	// Exposed is the number of labeled passages of which less than half
+	// the counted characters are masked, out of Passages.
+	Exposed  int `json:"exposed"`
+	Passages int `json:"passages"`
 }
 
 // functionWords carry no information on their own: like TAB's measures,
@@ -428,6 +432,26 @@ func leakage(texts []string, gold, found, ignored [][]entity) chars {
 		c.Docs++
 		if leaked == 0 {
 			c.CleanDocs++
+		}
+		for _, e := range gold[i] {
+			n, covered := 0, 0
+			for k, r := range t[max(e.start, 0):min(e.end, len(t))] {
+				k += e.start
+				if skip[k] || unicode.IsSpace(r) || unicode.IsPunct(r) {
+					continue
+				}
+				n++
+				if f[k] {
+					covered++
+				}
+			}
+			if n == 0 {
+				continue
+			}
+			c.Passages++
+			if 2*covered < n {
+				c.Exposed++
+			}
 		}
 	}
 	return c
@@ -516,6 +540,7 @@ func (r result) print() {
 	if ch.Labeled > 0 && ch.Masked > 0 {
 		fmt.Printf("  characters: %.1f%% of the labeled ones leaked (%d of %d), %.1f%% of the masked ones labeled, %d of %d documents without a leak\n",
 			100*float64(ch.Leaked)/float64(ch.Labeled), ch.Leaked, ch.Labeled, 100*float64(ch.Right)/float64(ch.Masked), ch.CleanDocs, ch.Docs)
+		fmt.Printf("  passages: %d of %d exposed (%.1f%%, less than half masked)\n", ch.Exposed, ch.Passages, 100*float64(ch.Exposed)/float64(max(ch.Passages, 1)))
 	}
 }
 
