@@ -99,3 +99,29 @@ ind-test	signalement	Signalement de propos sur l'origine et la couleur de peau d
 ind-test	compte rendu	Compte rendu d'entretien annuel d'un salarié très engagé dans la vie politique de sa commune.
 ind-test	courriel	Une manager informe les RH qu'un salarié vient de sortir de prison et reprend en semi-liberté.
 ind-test	formulaire	Formulaire de déclaration d'ayants droit à la mutuelle mentionnant le partenaire d'une salariée.
+fam-train	courriel	Une salariée demande un congé pour le décès de son père et parle de l'organisation des obsèques avec sa famille.
+fam-train	courriel	Un salarié en instance de divorce demande à changer ses horaires pour la garde alternée de ses enfants.
+fam-train	courriel	Une manager informe l'équipe de la naissance des jumeaux d'un collègue et organise une cagnotte.
+fam-train	courriel	Un salarié explique ses retards par l'hospitalisation de sa mère et ses trajets jusqu'à l'EHPAD.
+fam-train	courriel	Une salariée parent isolé demande un passage à temps partiel pour s'occuper de son fils autiste.
+fam-train	compte rendu	Compte rendu d'entretien avec l'assistante sociale du travail d'un salarié menacé d'expulsion de son logement.
+fam-train	compte rendu	Compte rendu d'entretien annuel où le salarié évoque son déménagement, la mutation de son épouse et la scolarité de ses enfants.
+fam-train	compte rendu	Compte rendu d'une cellule d'écoute après le suicide d'un collègue, avec les réactions de ses proches collègues.
+fam-train	note	Note RH sur une saisie sur salaire suite au surendettement d'un salarié.
+fam-train	note	Note sur l'accompagnement d'une salariée victime de violences conjugales, avec un hébergement d'urgence.
+fam-train	lettre	Lettre d'une salariée demandant un congé de proche aidant pour son mari malade.
+fam-train	lettre	Lettre d'un salarié demandant une avance sur salaire après l'incendie de sa maison.
+fam-train	message	Messagerie entre collègues qui se relaient pour aider une collègue dont le fils a eu un accident de scooter.
+fam-train	message	Conversation où un salarié raconte son mariage, sa belle-famille et son voyage de noces.
+fam-train	rapport	Rapport de l'assistante sociale sur les demandes d'aide de plusieurs salariés : loyers impayés, frais d'obsèques, garde d'enfants.
+fam-train	formulaire	Fiche de contacts d'urgence avec les liens de parenté, adresses et téléphones des proches.
+fam-train	formulaire	Demande d'allocation de rentrée scolaire du CSE avec la composition du foyer.
+fam-train	formulaire	Demande d'adaptation de poste d'une salariée enceinte, avec le suivi de sa grossesse.
+fam-train	signalement	Signalement d'une salariée qui craint que son ex-conjoint vienne la chercher sur son lieu de travail.
+fam-train	courriel	Un salarié prévient qu'il témoigne au procès de son frère et sera absent deux jours.
+fam-test	courriel	Une salariée annonce à sa responsable son adoption d'un enfant et demande son congé d'adoption.
+fam-test	compte rendu	Compte rendu d'entretien de retour après un congé pour le décès d'un enfant.
+fam-test	lettre	Lettre d'un salarié demandant un don de jours de repos pour s'occuper de sa fille gravement malade.
+fam-test	note	Note sur un salarié hébergé chez un collègue après sa séparation et la perte de son logement.
+fam-test	message	Messagerie où des collègues commentent le remariage de leur directeur et la naissance de son petit-fils.
+fam-test	formulaire	Déclaration de situation familiale pour la mutuelle après un divorce, avec les enfants à charge et l'ex-conjoint.
