@@ -244,6 +244,17 @@ m, _ := indecis.Load("runs/work-ind", indecis.WithInt8(),
 r := recognizer.New(m, []string{"mask", "sensitive"}, ner.RegexEntityFilter(ner.BuiltinRegexPatterns))
 ```
 
+## Trying it on real documents
+
+`indecis-anon` is go-anon's `anon-doc` with an indecis masking model in place of the CRF: the same formats (DOCX, ODT, PDF with OCR, CSV/TSV, plain text), the same verification, fail-closed mode and cleaning of hidden surfaces, go-anon's regular expressions for identifiers and secrets. go-anon itself is not modified.
+
+```bash
+make build
+bin/indecis-anon -model runs/work-ind -bias 5 -strict -input note.docx -output note_anon.docx
+```
+
+`-bias` sets how far it masks (see Leaks): 5 by default, 6 when leaks matter more than readability. Not carried over from anon-doc: the hash strategy and the encrypted mapping store, internal to go-anon's commands (`-save-mapping-insecure` writes the mapping in clear).
+
 ## Status
 
 Depends on the `feat/spans` branch of indecis (`replace` directives in `go.mod`). The model file is 305 MB (bf16 embedding table), go-anon's French CRF 278 MB.
