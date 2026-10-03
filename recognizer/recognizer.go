@@ -112,13 +112,17 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 }
 
 // category returns the type of the sensitive passage that overlaps s the
-// most, "" if none.
+// most, if it covers at least half of s: a mask joined to a neighbour
+// does not take its category.
 func category(s Span, sensitive []indecis.Span) string {
 	cat, best := "", 0
 	for _, t := range sensitive {
 		if o := min(s.End, t.End) - max(s.Start, t.Start); o > best {
 			cat, best = t.Type, o
 		}
+	}
+	if 2*best < s.End-s.Start {
+		return ""
 	}
 	return cat
 }
