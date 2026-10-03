@@ -20,6 +20,7 @@ package recognizer
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/bornholm/go-anon/pkg/ner"
@@ -128,7 +129,7 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 	if k, ok := r.known[text]; ok {
 		found, sensitive, typed = k[0].masks, k[0].sensitive, k[0].typed
 	} else {
-		d, err := r.model.Decide(ctx, text)
+		d, err := r.model.Decide(ctx, steadyPlaceholders(text))
 		if err != nil {
 			return nil, err
 		}
@@ -172,6 +173,25 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 		r.OnFound(text, list)
 	}
 	return out, nil
+}
+
+// placeholderNonce matches the random suffix of go-anon's placeholders,
+// ⟦TYPE_N_nonce⟧.
+var placeholderNonce = regexp.MustCompile(`(⟦[A-Z][A-Z0-9_]*?_\d+_)([0-9a-f]+)(⟧)`)
+
+// steadyPlaceholders replaces the random suffix of go-anon's placeholders
+// with as many fixed letters. Verification passes read text full of
+// placeholders, and a suffix that changes at every run made what the
+// model found around them change too. The length, hence every offset,
+// stays the same.
+func steadyPlaceholders(text string) string {
+	if !strings.Contains(text, "⟦") {
+		return text
+	}
+	return placeholderNonce.ReplaceAllStringFunc(text, func(m string) string {
+		p := placeholderNonce.FindStringSubmatch(m)
+		return p[1] + strings.Repeat("x", len(p[2])) + p[3]
+	})
 }
 
 // category returns the type of the sensitive passage that overlaps s the

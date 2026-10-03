@@ -33,3 +33,12 @@ func TestRefine(t *testing.T) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 }
+
+func TestSteadyPlaceholders(t *testing.T) {
+	in := "Bonjour ⟦PERSON_1_c471b2⟧, voir ⟦CODE_12_0a9f⟧ et ⟦x⟧."
+	got := steadyPlaceholders(in)
+	want := "Bonjour ⟦PERSON_1_xxxxxx⟧, voir ⟦CODE_12_xxxx⟧ et ⟦x⟧."
+	if got != want || len(got) != len(in) {
+		t.Fatalf("got %q", got)
+	}
+}
