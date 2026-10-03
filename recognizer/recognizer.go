@@ -38,6 +38,17 @@ type Recognizer struct {
 	// Raw keeps the passages as the model decodes them, typed by their
 	// own question, instead of refining their union.
 	Raw bool
+	// OnFound, if set, receives each text given to Recognize and what was
+	// found in it, go-anon's filters included: to list what a document
+	// had masked.
+	OnFound func(text string, found []Found)
+}
+
+// Found is an entity returned by Recognize, with the special category
+// (GDPR article 9 or 10) of the sensitive passage it covers, if any.
+type Found struct {
+	ner.Entity
+	Sensitive string
 }
 
 // New wraps model. With one question whose types are go-anon's (PER,
@@ -62,7 +73,7 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 	if err != nil {
 		return nil, err
 	}
-	var found []indecis.Span
+	var found, sensitive []indecis.Span
 	for _, q := range r.questions {
 		a, ok := d[0][q]
 		if !ok || a.Kind != indecis.Spans {
@@ -71,6 +82,9 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 		for _, s := range a.Spans {
 			if s.Confidence >= r.MinConfidence {
 				found = append(found, s)
+				if q == "sensitive" {
+					sensitive = append(sensitive, s)
+				}
 			}
 		}
 	}
@@ -87,7 +101,26 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 	for _, f := range r.filters {
 		out = f(text, out)
 	}
+	if r.OnFound != nil {
+		list := make([]Found, len(out))
+		for i, e := range out {
+			list[i] = Found{Entity: e, Sensitive: category(Span{e.Start, e.End}, sensitive)}
+		}
+		r.OnFound(text, list)
+	}
 	return out, nil
+}
+
+// category returns the type of the sensitive passage that overlaps s the
+// most, "" if none.
+func category(s Span, sensitive []indecis.Span) string {
+	cat, best := "", 0
+	for _, t := range sensitive {
+		if o := min(s.End, t.End) - max(s.Start, t.Start); o > best {
+			cat, best = t.Type, o
+		}
+	}
+	return cat
 }
 
 // Mask is a refined mask and its type.
