@@ -21,10 +21,11 @@ func TestRefine(t *testing.T) {
 	got := Refine(text, []Span{
 		cut("écrasé", 0, 2),                        // "é": grows to the word
 		at("par"),                                  // function word only: dropped
+		at("charge"),                               // joined to "écrasé" over "par une"
 		at("Magasinier"), at("site"), at("Stains"), // joined over "sur le", "de"
 		at("Mme Roux"), // not joined over the line break
 	}, nil)
-	want := []Span{at("écrasé"), at("charge"), {at("Magasinier").Start, at("Stains").End}, at("Mme Roux")}
+	want := []Span{{at("écrasé").Start, at("charge").End}, {at("Magasinier").Start, at("Stains").End}, at("Mme Roux")}
 	if !slices.Equal(got, want) {
 		for _, s := range got {
 			t.Logf("%q", text[s.Start:s.End])

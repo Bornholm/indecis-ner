@@ -20,6 +20,7 @@ package recognizer
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/bornholm/go-anon/pkg/ner"
 	"github.com/bornholm/indecis"
@@ -42,6 +43,14 @@ type Recognizer struct {
 	// found in it, go-anon's filters included: to list what a document
 	// had masked.
 	OnFound func(text string, found []Found)
+
+	// known holds the passages found by Document in each paragraph.
+	known map[string][]decided
+}
+
+// decided is a paragraph's share of a whole-document decision.
+type decided struct {
+	masks, sensitive, typed []indecis.Span
 }
 
 // Found is an entity returned by Recognize, with the special category
@@ -59,6 +68,52 @@ func New(model *indecis.Model, questions []string, filters ...ner.EntityFilter) 
 	return &Recognizer{model: model, questions: questions, filters: filters}
 }
 
+// Document reads the paragraphs of a document as one text, joined by
+// line breaks, the way the model was trained, and keeps what it finds in
+// each. go-anon then gives Recognize one paragraph at a time: a known
+// paragraph gets the passages found with the whole document as context,
+// so a heading or a short line is not judged alone. Other texts
+// (verification passes) are decided on their own.
+func (r *Recognizer) Document(ctx context.Context, paragraphs []string) error {
+	text := strings.Join(paragraphs, "\n")
+	d, err := r.model.Decide(ctx, text)
+	if err != nil {
+		return err
+	}
+	r.known = map[string][]decided{}
+	start := 0
+	for _, p := range paragraphs {
+		end := start + len(p)
+		var dec decided
+		shift := func(spans []indecis.Span) []indecis.Span {
+			var out []indecis.Span
+			for _, s := range spans {
+				s.Start, s.End = max(s.Start, start), min(s.End, end)
+				if s.Start >= s.End {
+					continue
+				}
+				s.Start, s.End = s.Start-start, s.End-start
+				s.Text = p[s.Start:s.End]
+				out = append(out, s)
+			}
+			return out
+		}
+		for _, q := range r.questions {
+			found := shift(d[0][q].Spans)
+			dec.masks = append(dec.masks, found...)
+			if q == "sensitive" {
+				dec.sensitive = append(dec.sensitive, found...)
+			}
+		}
+		dec.typed = shift(d[0]["entities"].Spans)
+		if _, dup := r.known[p]; !dup {
+			r.known[p] = []decided{dec}
+		}
+		start = end + 1
+	}
+	return nil
+}
+
 // Recognize implements anonymizer.Recognizer.
 func (r *Recognizer) Recognize(text string) ([]ner.Entity, error) {
 	return r.RecognizeContext(context.Background(), text)
@@ -69,32 +124,40 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 	if text == "" {
 		return []ner.Entity{}, nil
 	}
-	d, err := r.model.Decide(ctx, text)
-	if err != nil {
-		return nil, err
-	}
-	var found, sensitive []indecis.Span
-	for _, q := range r.questions {
-		a, ok := d[0][q]
-		if !ok || a.Kind != indecis.Spans {
-			return nil, fmt.Errorf("recognizer: the model has no spans question %q", q)
+	var found, sensitive, typed []indecis.Span
+	if k, ok := r.known[text]; ok {
+		found, sensitive, typed = k[0].masks, k[0].sensitive, k[0].typed
+	} else {
+		d, err := r.model.Decide(ctx, text)
+		if err != nil {
+			return nil, err
 		}
-		for _, s := range a.Spans {
-			if s.Confidence >= r.MinConfidence {
-				found = append(found, s)
-				if q == "sensitive" {
-					sensitive = append(sensitive, s)
-				}
+		for _, q := range r.questions {
+			a, ok := d[0][q]
+			if !ok || a.Kind != indecis.Spans {
+				return nil, fmt.Errorf("recognizer: the model has no spans question %q", q)
+			}
+			found = append(found, a.Spans...)
+			if q == "sensitive" {
+				sensitive = append(sensitive, a.Spans...)
 			}
 		}
+		typed = d[0]["entities"].Spans
 	}
+	kept := found[:0:0]
+	for _, s := range found {
+		if s.Confidence >= r.MinConfidence {
+			kept = append(kept, s)
+		}
+	}
+	found = kept
 	var out []ner.Entity
 	if r.Raw {
 		for _, s := range found {
 			out = append(out, ner.Entity{Text: s.Text, Type: ner.EntityType(s.Type), Start: s.Start, End: s.End, Confidence: s.Confidence})
 		}
 	} else {
-		for _, m := range Masks(text, found, d[0]["entities"].Spans) {
+		for _, m := range Masks(text, found, typed) {
 			out = append(out, ner.Entity{Text: text[m.Start:m.End], Type: m.Type, Start: m.Start, End: m.End, Confidence: m.Confidence})
 		}
 	}
