@@ -196,6 +196,31 @@ What matters is how much personal data stays readable, not whether each passage 
 - What still leaks at bias 6 (`compare -leaks`): relatives and family situation ("conjoint", "Parent isolé", "Sa femme"), some health details ("infiltration"), generic roles ("la trésorière du CSE"), and events ("une procédure d'expulsion").
 - Bias 5 is a reasonable default for the go-anon adapter; 6 when every leak counts more than readability.
 
+### A larger backbone: a25m
+
+`runs/work-ind-a25m` is `runs/work-ind` trained on bekko-embedding-v1-a25m (13 layers instead of 4, same width): same data, same settings, about 6 hours instead of 2 (690 tokens per second, 6.6 GB at its peak).
+
+At the same bias it masks less, so the comparison is made at equal leak (int8, refined, `-question mask,sensitive`):
+
+| Test set | a8m | a25m |
+| --- | --- | --- |
+| Prose, 98 docs | bias 6: 1.3% leaked, 58% of the masked characters labeled | bias 7: 1.2% leaked, 66% labeled |
+| Indirect prose, 56 docs | bias 6: 2.4%, 57% | bias 8: 2.3%, 60% |
+| Targeted prose, 20 docs | bias 6: 2.1%, 52% | bias 8: 2.0%, 54% |
+| Unseen templates, 300 docs | bias 6: 0.5%, 68% | bias 8: 1.3%, 69% |
+
+| 10 A4 pages (30,000 characters), int8 | a8m | a25m |
+| --- | --- | --- |
+| One core | 1.3 s | 4.2 s |
+| All cores | 0.66 s | 2.1 s |
+| Memory after the document (resident / own) | 320 MB / 263 MB | 429 MB / 336 MB |
+
+- For the same leak in prose, a25m masks 2 to 8 points fewer characters by mistake: a better reading, not fewer leaks.
+- On the templates, what a25m leaves is mostly the legal form of companies ("au capital de"), which the labels include in the employer's passage: no personal data.
+- Special categories on novel words barely move: belief 0.29, offence 0.39, origin 0.17, politics 0.08, sexuality 0.10 lenient recall.
+- TAB at bias 3: English quasi 0.924 for precision 0.785, French 0.913 for 0.776 (a8m: 0.933 / 0.762 and 0.922 / 0.699).
+- Three times slower for a modest gain: a8m at bias 5 or 6 stays the default; a25m is worth it where extra masks hurt the reading of the document.
+
 ## Using it in go-anon
 
 go-anon's anonymizer takes any `anonymizer.Recognizer`. `recognizer.New` wraps an indecis model and applies go-anon's filters after it, as its own recognizer does after the CRF:
