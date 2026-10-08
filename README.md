@@ -1,12 +1,14 @@
 # indecis-ner
 
-Can an [indecis](../indecis) model replace the CRF of [go-anon](../go-anon)? This project trains a `spans` model on go-anon's French WikiNER corpus and runs both engines on the same raw texts.
+Can an [indecis](https://github.com/Bornholm/indecis) model replace the CRF of [go-anon](https://github.com/Bornholm/go-anon)? This project trains a `spans` model on go-anon's French WikiNER corpus and runs both engines on the same raw texts.
 
 ```bash
 make data      # WikiNER from go-anon, deduplicated
 make train     # about 1.5 hours on a laptop, all cores
 make compare compare-docs
 ```
+
+`make data` reads WikiNER from a go-anon checkout next to this one (`GOANON`, `../go-anon` by default). The trained `runs/work-fam` model, used by [indecis-caviardage](https://github.com/Bornholm/indecis-caviardage), is attached to the GitHub releases.
 
 ## The test set
 
