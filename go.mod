@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/bornholm/go-anon v0.3.1-0.20260822203631-b1f077430d9b
-	github.com/bornholm/indecis v0.4.0
+	github.com/bornholm/indecis v0.5.0
 	golang.org/x/text v0.42.0
 )
 
