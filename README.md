@@ -240,6 +240,26 @@ At the same bias it masks less, so the comparison is made at equal leak (int8, r
 - TAB at bias 3: English quasi 0.924 for precision 0.785, French 0.913 for 0.776 (a8m: 0.933 / 0.762 and 0.922 / 0.699).
 - Three times slower for a modest gain: a8m at bias 5 or 6 stays the default; a25m is worth it where extra masks hurt the reading of the document.
 
+### A smaller model: pruning and distillation
+
+The MLP holds two thirds of the products of a layer. `distill` keeps, in each layer of `runs/work-fam`, the MLP neurons most active on 300 training documents (mean activity times the norm of their output weights), then trains the pruned model for one epoch on the training data, its labels and the tags of `runs/work-fam` (half each, temperature 2, plus the distance between the final states), about 25 minutes. The pruned model takes the temperatures of its teacher, so that a decoding bias keeps its effect.
+
+```bash
+./bin/distill -teacher runs/work-fam -keep 576 -out runs/work-fam-p576
+```
+
+| int8 | work-fam (1,152 neurons) | p576 | p384 |
+| --- | --- | --- | --- |
+| TAB French, bias 3: recall / precision / token F1 | 0.918 / 0.695 / 0.791 | 0.921 / 0.681 / 0.783 | 0.921 / 0.678 / 0.781 |
+| TAB English, bias 3 | 0.940 / 0.757 / 0.839 | 0.943 / 0.746 / 0.833 | 0.944 / 0.735 / 0.826 |
+| Exposed passages at bias 6: family / prose / indirect / unseen templates | 13 / 18 / 16 / 10 | 16 / 17 / 14 / 12 | 15 / 19 / 14 / 30 |
+| Characters leaked at bias 6, same sets | 4.3 / 1.2 / 3.0 / 0.6% | 4.7 / 1.1 / 3.0 / 0.8% | 4.3 / 1.2 / 3.2 / 0.7% |
+| TAB French test, inference only | 6.8 s | 5.8 s | 5.5 s |
+
+- Pruned without training, the model masks far more (TAB French precision 0.539 at 576 neurons): the distillation recovers it.
+- At equal recall, p576 is the teacher: TAB French at bias 1.5 with its own calibration, 0.916 / 0.700 / 0.794.
+- p384 starts to leak on unseen templates; p576 is the one to use where speed matters, 15% faster.
+
 ## Using it in go-anon
 
 go-anon's anonymizer takes any `anonymizer.Recognizer`. `recognizer.New` wraps an indecis model and applies go-anon's filters after it, as its own recognizer does after the CRF:
