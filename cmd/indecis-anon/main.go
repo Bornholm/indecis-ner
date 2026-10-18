@@ -5,8 +5,8 @@
 // sensitive data (the mask and sensitive questions, see GUIDELINES.md);
 // go-anon's regular expressions still catch identifiers and secrets.
 //
-//	indecis-anon -model runs/work-fam -input lettre.docx -output lettre_anon.docx
-//	indecis-anon -model runs/work-fam -bias 6 -strict -input note.txt -output note_anon.txt
+//	indecis-anon -model runs/work-fam-p576 -input lettre.docx -output lettre_anon.docx
+//	indecis-anon -model runs/work-fam-p576 -bias 6 -strict -input note.txt -output note_anon.txt
 //
 // Not carried over from anon-doc: the hash strategy and the encrypted
 // mapping store, internal to go-anon's commands.
@@ -43,7 +43,7 @@ var walkers = map[string]func(string) (docprocessor.Walker, error){
 }
 
 func main() {
-	model := flag.String("model", "runs/work-fam", "indecis masking model")
+	model := flag.String("model", "runs/work-fam-p576", "indecis masking model")
 	bias := flag.Float64("bias", 5, "decoding bias towards masking: higher leaks less and masks more (README, Leaks)")
 	input := flag.String("input", "", "document to anonymize (required)")
 	output := flag.String("output", "", "anonymized document (required)")

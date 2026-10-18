@@ -8,7 +8,7 @@ make train     # about 1.5 hours on a laptop, all cores
 make compare compare-docs
 ```
 
-`make data` reads WikiNER from a go-anon checkout next to this one (`GOANON`, `../go-anon` by default). The trained `runs/work-fam` model, used by [indecis-caviardage](https://github.com/Bornholm/indecis-caviardage), is attached to the GitHub releases.
+`make data` reads WikiNER from a go-anon checkout next to this one (`GOANON`, `../go-anon` by default). The trained `runs/work-fam-p576` model, the default of `indecis-anon` and of [indecis-caviardage](https://github.com/Bornholm/indecis-caviardage), is attached to the GitHub releases (from v0.2.0; v0.1.0 holds `runs/work-fam`).
 
 ## The test set
 
@@ -259,6 +259,7 @@ The MLP holds two thirds of the products of a layer. `distill` keeps, in each la
 - Pruned without training, the model masks far more (TAB French precision 0.539 at 576 neurons): the distillation recovers it.
 - At equal recall, p576 is the teacher: TAB French at bias 1.5 with its own calibration, 0.916 / 0.700 / 0.794.
 - p384 starts to leak on unseen templates; p576 is the one to use where speed matters, 15% faster.
+- `runs/work-fam-p576` is now the default model of `indecis-anon` and of indecis-caviardage.
 
 ## Using it in go-anon
 
@@ -289,11 +290,11 @@ r := recognizer.New(m, []string{"mask", "sensitive"}, ner.RegexEntityFilter(ner.
 
 ```bash
 make build
-bin/indecis-anon -model runs/work-fam -bias 5 -strict -input note.docx -output note_anon.docx
+bin/indecis-anon -model runs/work-fam-p576 -bias 5 -strict -input note.docx -output note_anon.docx
 ```
 
 `-bias` sets how far it masks (see Leaks): 5 by default, 6 when leaks matter more than readability. Not carried over from anon-doc: the hash strategy and the encrypted mapping store, internal to go-anon's commands (`-save-mapping-insecure` writes the mapping in clear).
 
 ## Status
 
-Depends on the `feat/spans` branch of indecis (`replace` directives in `go.mod`). The model file is 305 MB (bf16 embedding table), go-anon's French CRF 278 MB.
+Depends on indecis v0.5.0. The weights of `runs/work-fam-p576` are 276 MB (bf16 embedding table), go-anon's French CRF 278 MB.
