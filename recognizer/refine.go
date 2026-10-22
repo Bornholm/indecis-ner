@@ -22,17 +22,26 @@ func init() {
 }
 
 // Refine makes masks easier to trust: each mask cut inside a word grows
-// to the whole word ("[[é]]crasé" becomes "[[écrasé]]"), masks made only
-// of function words or punctuation are dropped, and masks separated only
-// by spaces, commas and function words are joined ("[magasinier] sur le
-// [site]" becomes one mask) when join allows it (nil: always), as are
-// masks that touch.
-// Masks that overlap are merged whatever join says. Masks come back
-// sorted and disjoint.
+// to the whole word ("[[é]]crasé" becomes "[[écrasé]]") and leaves out
+// the spaces at its edges; empty masks and masks made only of function
+// words or punctuation are dropped; masks separated only by spaces,
+// commas and function words are joined ("[magasinier] sur le [site]"
+// becomes one mask) when join allows it (nil: always), as are masks that
+// touch. Masks that overlap are merged whatever join says. Masks come
+// back sorted and disjoint.
 func Refine(text string, spans []Span, join func(a, b Span) bool) []Span {
 	var out []Span
 	for _, s := range spans {
 		s.Start, s.End = max(s.Start, 0), min(s.End, len(text))
+		// An edge inside a rune moves to the rune's bounds: the mask then
+		// holds the whole rune, and grows from it as from a cut word.
+		for s.Start > 0 && s.Start < len(text) && !utf8.RuneStart(text[s.Start]) {
+			s.Start--
+		}
+		for s.End < len(text) && s.End > 0 && !utf8.RuneStart(text[s.End]) {
+			s.End++
+		}
+		// An empty mask holds no rune, so cuts no word: it is dropped.
 		if s.Start >= s.End {
 			continue
 		}
@@ -56,7 +65,24 @@ func Refine(text string, spans []Span, join func(a, b Span) bool) []Span {
 			}
 			s.End += size
 		}
-		if informative(text[s.Start:s.End]) {
+		// Spaces at the edges are left out: two masks that shared the
+		// space between them would overlap, and be merged whatever join
+		// says. Other signs stay masked, as the % of "80 %".
+		for s.Start < s.End {
+			r, size := utf8.DecodeRuneInString(text[s.Start:])
+			if !unicode.IsSpace(r) {
+				break
+			}
+			s.Start += size
+		}
+		for s.Start < s.End {
+			r, size := utf8.DecodeLastRuneInString(text[s.Start:s.End])
+			if !unicode.IsSpace(r) {
+				break
+			}
+			s.End -= size
+		}
+		if s.Start < s.End && informative(text[s.Start:s.End]) {
 			out = append(out, s)
 		}
 	}

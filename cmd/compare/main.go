@@ -72,7 +72,7 @@ func main() {
 	showErrors := flag.Int("errors", 0, "print this many errors per engine")
 	showLeaks := flag.Int("leaks", 0, "print this many labeled passages left partly or fully unmasked")
 	showExtra := flag.Int("extra", 0, "print this many found passages that overlap no labeled one")
-	refine := flag.Bool("refine", false, "refine indecis masks as the go-anon adapter does (recognizer.Masks): grow the masks cut inside a word to the whole word, drop function-word masks, join masks over function words when they hold the same special category, or none; with the sensitive question, also report the categories the masks keep; implies -merge")
+	refine := flag.Bool("refine", false, "refine indecis masks as the go-anon adapter does (recognizer.Masks): grow the masks cut inside a word to the whole word and leave out the spaces at their edges, drop function-word masks, join masks over function words when they hold the same special category, or none; with the sensitive question, also report the categories the masks keep; implies -merge")
 	flag.Parse()
 	novel := novelFlag
 	if *refine {
