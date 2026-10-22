@@ -63,7 +63,7 @@ func main() {
 	showErrors := flag.Int("errors", 0, "print this many errors per engine")
 	showLeaks := flag.Int("leaks", 0, "print this many labeled passages left partly or fully unmasked")
 	showExtra := flag.Int("extra", 0, "print this many found passages that overlap no labeled one")
-	refine := flag.Bool("refine", false, "grow indecis masks to whole words, drop function-word masks, join masks over function words (recognizer.Refine); implies -merge")
+	refine := flag.Bool("refine", false, "refine indecis masks as the go-anon adapter does (recognizer.Masks): grow them to whole words, drop function-word masks, join masks over function words when they hold the same special category, or none; with the sensitive question, also report the categories the masks keep; implies -merge")
 	flag.Parse()
 	novel := novelFlag
 	if *refine {
@@ -92,23 +92,22 @@ func main() {
 	texts := make([]string, len(examples))
 	for i, e := range examples {
 		texts[i] = e.Text
-		l, _ := e.Labels["sensitive"].([]any)
-		for _, item := range l {
-			if !categories {
-				break
+		if categories {
+			labels, _ := e.Labels["sensitive"].([]any)
+			for _, item := range labels {
+				m, _ := item.(map[string]any)
+				start, ok1 := m["start"].(float64)
+				end, ok2 := m["end"].(float64)
+				typ, ok3 := m["type"].(string)
+				if !ok1 || !ok2 || !ok3 || start < 0 || start >= end || int(end) > len(e.Text) {
+					continue
+				}
+				// With -novel, as the other labels.
+				if lex != nil && !lex.Novel(typ, e.Text[int(start):int(end)]) {
+					continue
+				}
+				sensitive[i] = append(sensitive[i], entity{int(start), int(end), typ})
 			}
-			m, _ := item.(map[string]any)
-			start, ok1 := m["start"].(float64)
-			end, ok2 := m["end"].(float64)
-			typ, ok3 := m["type"].(string)
-			if !ok1 || !ok2 || !ok3 || start < 0 || start >= end || int(end) > len(e.Text) {
-				continue
-			}
-			// With -novel, as the other labels.
-			if lex != nil && !lex.Novel(typ, e.Text[int(start):int(end)]) {
-				continue
-			}
-			sensitive[i] = append(sensitive[i], entity{int(start), int(end), typ})
 		}
 		var list []any
 		for _, q := range questions {
@@ -214,7 +213,11 @@ func main() {
 					// when the question is asked.
 					var sens []indecis.Span
 					if categories {
-						sens = d[0]["sensitive"].Spans
+						a, ok := d[0]["sensitive"]
+						if !ok || a.Kind != indecis.Spans {
+							return nil, fmt.Errorf("%s has no spans question sensitive", dir)
+						}
+						sens = a.Spans
 					}
 					for _, s := range sens {
 						raw[i] = append(raw[i], entity{s.Start, s.End, s.Type})

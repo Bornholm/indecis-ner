@@ -55,7 +55,9 @@ type decided struct {
 }
 
 // Found is an entity returned by Recognize, with the special category
-// (GDPR article 9 or 10) of the sensitive passage it covers, if any.
+// (GDPR article 9 or 10) of the sensitive passage it covers, if any: one
+// category only, that of the passage it overlaps most, when it covers
+// several.
 type Found struct {
 	ner.Entity
 	Sensitive string
@@ -207,7 +209,9 @@ func steadyPlaceholders(text string) string {
 func category(text string, s Span, sensitive []indecis.Span) string {
 	cat, best := "", 0
 	for _, t := range sensitive {
-		start, end := max(s.Start, t.Start), min(s.End, t.End)
+		// The model's offsets, which Raw keeps as they are, are not
+		// trusted to fall within text.
+		start, end := max(s.Start, t.Start, 0), min(s.End, t.End, len(text))
 		if o := end - start; o > best && informative(text[start:end]) {
 			cat, best = t.Type, o
 		}
@@ -231,7 +235,10 @@ type Mask struct {
 // different special categories, or a sensitive mask and one that is not.
 // Masks that overlap are merged whatever they hold: a mask that holds a
 // sensitive passage stays flagged, but with one category only, that of
-// the passage it overlaps most.
+// the passage it overlaps most. That category is the merged mask's own:
+// joining two masks of one category may give a mask whose largest
+// overlap is a third passage, of another category, which it then
+// carries. It is never left without one.
 func Masks(text string, found, typed, sensitive []indecis.Span) []Mask {
 	spans := make([]Span, len(found))
 	for i, s := range found {

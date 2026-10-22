@@ -46,6 +46,67 @@ func TestSteadyPlaceholders(t *testing.T) {
 	}
 }
 
+// A mask covered by two special categories carries the one it overlaps
+// most.
+func TestMasksTwoCategories(t *testing.T) {
+	text := "Il jeûne pendant le ramadan malgré son diabète."
+	at := func(s, typ string) indecis.Span {
+		i := strings.Index(text, s)
+		return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ}
+	}
+	whole := at("jeûne pendant le ramadan malgré son diabète", "QUASI")
+	sensitive := []indecis.Span{at("diabète", "HEALTH"), at("jeûne pendant le ramadan", "BELIEF")}
+	got := Masks(text, []indecis.Span{whole}, nil, sensitive)
+	if len(got) != 1 || got[0].Sensitive != "BELIEF" {
+		t.Errorf("got %+v, want one mask flagged BELIEF", got)
+	}
+}
+
+// Offsets past the text, which Raw keeps as the model gives them, give a
+// category without slicing out of the text.
+func TestCategoryOutOfText(t *testing.T) {
+	text := "suivi pour un diabète"
+	beyond := indecis.Span{Start: 14, End: len(text) + 8, Type: "HEALTH"}
+	if got := category(text, Span{0, len(text) + 4}, []indecis.Span{beyond}); got != "HEALTH" {
+		t.Errorf("got %q, want HEALTH", got)
+	}
+}
+
+// A sensitive passage under MinConfidence neither flags a mask nor keeps
+// it from being joined to its neighbour.
+func TestMinConfidenceSensitive(t *testing.T) {
+	text := "Elle est infirmière de nuit en pneumologie."
+	at := func(s, typ string, conf float64) indecis.Span {
+		i := strings.Index(text, s)
+		return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ, Confidence: conf}
+	}
+	masks := []indecis.Span{at("infirmière de nuit", "QUASI", 0.9), at("pneumologie", "QUASI", 0.9)}
+	for _, c := range []struct {
+		conf float64
+		want []string
+	}{
+		{0.2, []string{"infirmière de nuit en pneumologie "}},
+		{0.8, []string{"infirmière de nuit ", "pneumologie HEALTH"}},
+	} {
+		sensitive := []indecis.Span{at("pneumologie", "HEALTH", c.conf)}
+		r := &Recognizer{MinConfidence: 0.5, known: map[string][]decided{
+			text: {{masks: append(slices.Clone(masks), sensitive...), sensitive: sensitive}},
+		}}
+		var got []string
+		r.OnFound = func(_ string, found []Found) {
+			for _, f := range found {
+				got = append(got, f.Text+" "+f.Sensitive)
+			}
+		}
+		if _, err := r.Recognize(text); err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(got, c.want) {
+			t.Errorf("sensitive confidence %g: got %q, want %q", c.conf, got, c.want)
+		}
+	}
+}
+
 // A sensitive passage keeps its category in its mask: the masks around
 // it are not joined to it, and a mask that holds it, however long, takes
 // it. Masks of one category are still joined, names still are not. The model's spans for a sentence of the demonstration document of
