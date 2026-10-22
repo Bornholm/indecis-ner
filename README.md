@@ -182,7 +182,7 @@ So 150 more training documents were written with indirect phrasings (fasting, a 
 
 What matters is how much personal data stays readable, not whether each passage gets the right type or exact bounds. `compare -question mask,sensitive -merge` scores the union of the two questions against the union of their labels, and reports characters: the share of the characters of labeled passages left unmasked (the leak), the share of masked characters that belong to a labeled passage, and the documents with no leak. Spaces, punctuation and function words (articles, prepositions, possessives) are not counted, as TAB leaves them out: an unmasked "le" before a masked "service de pneumologie" leaks nothing.
 
-`-refine` applies what the go-anon adapter does (`recognizer.Masks`): masks grow to whole words ("[[é]]crasé" is masked as "écrasé"), masks of function words alone are dropped, and masks separated only by function words and commas are joined ("magasinier sur le site de Stains" becomes one mask), except across a sentence and except for names and identifiers, which keep their own placeholder.
+`-refine` applies what the go-anon adapter does (`recognizer.Masks`): masks grow to whole words ("[[é]]crasé" is masked as "écrasé"), masks of function words alone are dropped, and masks separated only by function words and commas are joined ("magasinier sur le site de Stains" becomes one mask), except across a sentence, except for names and identifiers, which keep their own placeholder, and except between masks of different special categories, or a sensitive mask and one that is not (see below).
 
 `runs/work-ind`, int8, refined, by decoding bias:
 
@@ -197,6 +197,24 @@ What matters is how much personal data stays readable, not whether each passage 
 - The cost is extra masks: at bias 5, about 40% of the masked characters belong to no labeled passage. Some are personal data the labels missed ("hospitalisé et son pronostic", the date of an accident); some are not.
 - What still leaks at bias 6 (`compare -leaks`): relatives and family situation ("conjoint", "Parent isolé", "Sa femme"), some health details ("infiltration"), generic roles ("la trésorière du CSE"), and events ("une procédure d'expulsion").
 - Bias 5 is a reasonable default for the go-anon adapter; 6 when every leak counts more than readability.
+
+### Special categories after refining
+
+A refined mask carries the special category of the sensitive passages it holds, for the adapter's users (`Found.Sensitive`, `Mask.Sensitive`): one that releases the masks of a type, for instance, keeps the sensitive ones. Joining used to lose it. "fréquente avec" and "ses enfants à la synagogue de Chalon" became one mask, and the sensitive passage "la synagogue de Chalon" (`BELIEF`) covered less than half of it, which then took no category, and the type of a place. Masks are now joined only within the same category, none included, and a mask takes the category of the sensitive passage it overlaps most, however little of it, as long as the overlap holds a word other than a function word.
+
+`compare -refine` reports, among the labeled sensitive passages masked, those whose mask carries a category: covered at least half by such masks. `runs/work-fam-p576`, int8, bias 6:
+
+| Test set | Model's sensitive passages, before refining | Flagged, before | Flagged, now | Flagged masks over no labeled sensitive passage, before / now |
+| --- | --- | --- | --- | --- |
+| Prose, 98 docs | 91.1% | 56.2% | 95.3% | 91 / 261 |
+| Indirect prose, 56 docs | 84.1% | 60.3% | 86.6% | 35 / 109 |
+| Family test, 29 docs | 89.6% | 56.2% | 93.8% | 50 / 117 |
+| Targeted prose, 20 docs | 93.0% | 74.4% | 95.3% | 18 / 38 |
+| Unseen templates, 300 docs | 89.2% | 78.4% | 89.2% | 45 / 168 |
+
+- What is masked does not change: the leak and the masked characters are the same to the character, at bias 5 and 6.
+- Joining loses up to 35 points of the categories the model found. Without joining across categories but with the former rule (a category covering at least half of the mask), 72% to 82% are flagged.
+- The cost is masks flagged sensitive that hold no labeled special category: the adapter's users see more sensitive masks, the safe side for what a category protects. And more masks side by side: "elle [accompagne son fils] [à ses séances de chimiothérapie]".
 
 ### Relatives, family situation, life events
 
