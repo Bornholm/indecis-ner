@@ -33,32 +33,38 @@ func Refine(text string, spans []Span, join func(a, b Span) bool) []Span {
 	var out []Span
 	for _, s := range spans {
 		s.Start, s.End = max(s.Start, 0), min(s.End, len(text))
-		// An edge inside a rune moves to the rune's bounds: the mask then
-		// holds the whole rune, and grows from it as from a cut word.
-		for s.Start > 0 && s.Start < len(text) && !utf8.RuneStart(text[s.Start]) {
-			s.Start--
-		}
-		for s.End < len(text) && s.End > 0 && !utf8.RuneStart(text[s.End]) {
-			s.End++
-		}
-		// An empty mask holds no rune, so cuts no word: it is dropped.
+		// An empty mask holds no rune, so cuts no word: it is dropped,
+		// wherever it falls.
 		if s.Start >= s.End {
 			continue
 		}
-		// A mask grows only where it cuts a word: a mask that starts or
-		// ends on a space or a comma keeps that edge, instead of taking
-		// the word next to it, which may be another mask's. A hyphen or an
-		// apostrophe is inside a word: "des rendez-" takes "vous".
+		// An edge inside a rune moves to the rune's bounds: the mask then
+		// holds the whole rune, and grows from it as from a cut word.
+		for s.Start > 0 && !utf8.RuneStart(text[s.Start]) {
+			s.Start--
+		}
+		for s.End < len(text) && !utf8.RuneStart(text[s.End]) {
+			s.End++
+		}
+		// A mask grows only where it cuts a word: its edge is a letter or
+		// a digit, or a sign between two of them ("des rendez-" takes
+		// "vous", "/03/1980" takes "12"). A mask that starts or ends on a
+		// space, or on a comma before a space, does not take the word next
+		// to it, which may be another mask's. Where it does, and that word
+		// is another mask, the two overlap and are merged whatever join
+		// says: a sign inside a word rarely separates two passages.
 		first, _ := utf8.DecodeRuneInString(text[s.Start:])
-		last, _ := utf8.DecodeLastRuneInString(text[:s.End])
-		for (isWordRune(first) || inWord(first)) && s.Start > 0 {
+		last, size := utf8.DecodeLastRuneInString(text[:s.End])
+		left := isWordRune(first) || joins(text, s.Start)
+		right := isWordRune(last) || joins(text, s.End-size)
+		for left && s.Start > 0 {
 			r, size := utf8.DecodeLastRuneInString(text[:s.Start])
 			if !isWordRune(r) {
 				break
 			}
 			s.Start -= size
 		}
-		for (isWordRune(last) || inWord(last)) && s.End < len(text) {
+		for right && s.End < len(text) {
 			r, size := utf8.DecodeRuneInString(text[s.End:])
 			if !isWordRune(r) {
 				break
@@ -101,9 +107,19 @@ func Refine(text string, spans []Span, join func(a, b Span) bool) []Span {
 
 func isWordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
 
-// inWord reports whether r joins the parts of a word: hyphens and
-// apostrophes.
-func inWord(r rune) bool { return strings.ContainsRune("-‐'’", r) }
+// joins reports whether the rune at i in text is a sign between two
+// letters or digits, which joins the parts of a word or a number: the
+// hyphen of "rendez-vous", the apostrophe of "l'hôpital", the slashes of
+// "12/03/1980", the comma of "1,75".
+func joins(text string, i int) bool {
+	r, size := utf8.DecodeRuneInString(text[i:])
+	if isWordRune(r) || unicode.IsSpace(r) || i == 0 || i+size >= len(text) {
+		return false
+	}
+	before, _ := utf8.DecodeLastRuneInString(text[:i])
+	after, _ := utf8.DecodeRuneInString(text[i+size:])
+	return isWordRune(before) && isWordRune(after)
+}
 
 // words splits a passage into lowercase words.
 func words(s string) []string {

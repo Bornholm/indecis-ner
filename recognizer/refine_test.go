@@ -70,12 +70,16 @@ func TestRefineEdges(t *testing.T) {
 			t.Errorf("%q: got %v, want %q", text[c.in.Start:c.in.End], got, c.want)
 		}
 	}
-	// An empty mask, even inside a word, cuts none and is dropped.
-	if got := Refine(text, []Span{{at("prière").Start + 2, at("prière").Start + 2}}, nil); len(got) != 0 {
-		t.Errorf("empty mask: got %v, want none", got)
+	// An empty mask, even inside a word or a rune, cuts none and is
+	// dropped.
+	for _, i := range []int{at("prière").Start + 2, at("prière").Start + 4} {
+		if got := Refine(text, []Span{{i, i}}, nil); len(got) != 0 {
+			t.Errorf("empty mask at %d: got %v, want none", i, got)
+		}
 	}
-	// A hyphen or an apostrophe at the edge cuts a word.
-	text = "Des rendez-vous à l'hôpital."
+	// A sign between two letters or digits at the edge cuts a word or a
+	// number; a sign before a space does not.
+	text = "Des rendez-vous à l'hôpital, né le 12/03/1980, 1,75 m."
 	for _, c := range []struct {
 		in   Span
 		want string
@@ -83,6 +87,10 @@ func TestRefineEdges(t *testing.T) {
 		{at("Des rendez-"), "Des rendez-vous"},
 		{at("-vous à"), "rendez-vous à"},
 		{at("'hôpital"), "l'hôpital"},
+		{at("/03/1980"), "12/03/1980"},
+		{at("12/03/"), "12/03/1980"},
+		{at(",75 m"), "1,75 m"},
+		{at("hôpital, "), "hôpital,"},
 	} {
 		got := Refine(text, []Span{c.in}, nil)
 		if len(got) != 1 || text[got[0].Start:got[0].End] != c.want {
@@ -175,15 +183,15 @@ func TestMasksOverlapTwoCategories(t *testing.T) {
 
 // Masks that touch, without a character in between, are joined as masks
 // separated by function words: only within one category. They touch once
-// refined: here, over the slash that ends the first one.
+// refined: here, over the parentheses, which join no word.
 func TestMasksTouching(t *testing.T) {
-	text := "Elle consulte pour son diabète/prière du vendredi."
+	text := "Elle consulte pour (son diabète)(prière du vendredi)."
 	at := func(s, typ string) indecis.Span {
 		i := strings.Index(text, s)
 		return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ}
 	}
-	diabetes, prayer := at("diabète", "HEALTH"), at("prière du vendredi", "QUASI")
-	diabetes.End++ // the slash
+	diabetes, prayer := at("diabète", "HEALTH"), at("(prière du vendredi)", "QUASI")
+	diabetes.End++ // the parenthesis
 	found := []indecis.Span{diabetes, prayer}
 	if diabetes.End != prayer.Start {
 		t.Fatal("the masks do not touch")
@@ -192,8 +200,8 @@ func TestMasksTouching(t *testing.T) {
 		sensitive []indecis.Span
 		want      []string
 	}{
-		{[]indecis.Span{diabetes, at("prière du vendredi", "BELIEF")}, []string{"diabète/ HEALTH", "prière du vendredi BELIEF"}},
-		{[]indecis.Span{diabetes, at("prière du vendredi", "HEALTH")}, []string{"diabète/prière du vendredi HEALTH"}},
+		{[]indecis.Span{diabetes, at("prière du vendredi", "BELIEF")}, []string{"diabète) HEALTH", "(prière du vendredi) BELIEF"}},
+		{[]indecis.Span{diabetes, at("prière du vendredi", "HEALTH")}, []string{"diabète)(prière du vendredi) HEALTH"}},
 	} {
 		var got []string
 		for _, m := range Masks(text, found, nil, c.sensitive) {
