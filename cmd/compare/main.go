@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -37,7 +38,15 @@ type entity struct {
 // engine finds the entities of a batch of texts.
 type engine struct {
 	name string
-	find func(texts []string) ([][]entity, error)
+	find func(texts []string) (findings, error)
+}
+
+// findings are what an engine found in each text: the entities and, for
+// indecis with -refine and the sensitive question, the refined masks that
+// carry a special category and the model's sensitive passages before
+// refining.
+type findings struct {
+	found, flagged, raw [][]entity
 }
 
 // types are the types of the labels, set from the test file.
@@ -58,11 +67,12 @@ func main() {
 	merge := flag.Bool("merge", false, "score passages whatever their type: masked or not")
 	novelFlag := flag.String("novel", "", "lexicon of the training set (cmd/lexicon): score only the labeled passages none of whose words the training set had in their category; found passages over the others are ignored")
 	bias := flag.Float64("bias", 0, "indecis decoding bias towards passages (indecis.WithSpanBias)")
+	minConfidence := flag.Float64("minconfidence", 0, "drop the indecis passages less confident, sensitive ones included, as the recognizer's MinConfidence")
 	jsonOut := flag.String("json", "", "write the scores as JSON to this file")
 	showErrors := flag.Int("errors", 0, "print this many errors per engine")
 	showLeaks := flag.Int("leaks", 0, "print this many labeled passages left partly or fully unmasked")
 	showExtra := flag.Int("extra", 0, "print this many found passages that overlap no labeled one")
-	refine := flag.Bool("refine", false, "grow indecis masks to whole words, drop function-word masks, join masks over function words (recognizer.Refine); implies -merge")
+	refine := flag.Bool("refine", false, "refine indecis masks as the go-anon adapter does (recognizer.Masks): grow them to whole words, drop function-word masks, join masks over function words when they hold the same special category, or none; with the sensitive question, also report the categories the masks keep; implies -merge")
 	flag.Parse()
 	novel := novelFlag
 	if *refine {
@@ -81,37 +91,57 @@ func main() {
 	}
 	seenTypes := map[string]bool{}
 	gold := make([][]entity, len(examples))
+	// sensitive holds the labeled special categories, for the categories
+	// the refined masks keep: with -refine and the sensitive question.
+	sensitive := make([][]entity, len(examples))
+	questions := strings.Split(*question, ",")
+	categories := *refine && slices.Contains(questions, "sensitive")
 	ignored := make([][]entity, len(examples)) // labeled but not novel
 	kept, dropped := 0, 0
 	texts := make([]string, len(examples))
-	questions := strings.Split(*question, ",")
 	for i, e := range examples {
 		texts[i] = e.Text
-		var list []any
-		for _, q := range questions {
-			l, _ := e.Labels[q].([]any)
-			list = append(list, l...)
+		if categories {
+			labels, _ := e.Labels["sensitive"].([]any)
+			seen := map[entity]bool{}
+			for _, item := range labels {
+				ent, err := label(e.Text, item)
+				if err != nil {
+					log.Fatalf("%s, example %d, sensitive: %v", *testPath, i+1, err)
+				}
+				// With -novel, as the other labels.
+				if seen[ent] || lex != nil && !lex.Novel(ent.typ, e.Text[ent.start:ent.end]) {
+					continue
+				}
+				seen[ent] = true
+				sensitive[i] = append(sensitive[i], ent)
+			}
 		}
 		seen := map[entity]bool{}
-		for _, item := range list {
-			m := item.(map[string]any)
-			typ := m["type"].(string)
-			if *merge {
-				typ = "ANY"
+		for _, q := range questions {
+			l, _ := e.Labels[q].([]any)
+			for _, item := range l {
+				ent, err := label(e.Text, item)
+				if err != nil {
+					log.Fatalf("%s, example %d, %s: %v", *testPath, i+1, q, err)
+				}
+				typ := ent.typ
+				if *merge {
+					ent.typ = "ANY"
+				}
+				if lex != nil && !lex.Novel(typ, e.Text[ent.start:ent.end]) {
+					ignored[i] = append(ignored[i], ent)
+					dropped++
+					continue
+				}
+				if seen[ent] {
+					continue // the same passage under two questions
+				}
+				seen[ent] = true
+				kept++
+				gold[i] = append(gold[i], ent)
+				seenTypes[ent.typ] = true
 			}
-			ent := entity{int(m["start"].(float64)), int(m["end"].(float64)), typ}
-			if lex != nil && !lex.Novel(m["type"].(string), e.Text[ent.start:ent.end]) {
-				ignored[i] = append(ignored[i], ent)
-				dropped++
-				continue
-			}
-			if seen[ent] {
-				continue // the same passage under two questions
-			}
-			seen[ent] = true
-			kept++
-			gold[i] = append(gold[i], ent)
-			seenTypes[typ] = true
 		}
 	}
 	if lex != nil {
@@ -159,17 +189,38 @@ func main() {
 		if *int8 {
 			name += " int8"
 		}
-		engines = append(engines, engine{name, func(texts []string) ([][]entity, error) {
+		engines = append(engines, engine{name, func(texts []string) (findings, error) {
 			out := make([][]entity, len(texts))
+			var flagged, raw [][]entity
+			if categories {
+				flagged, raw = make([][]entity, len(texts)), make([][]entity, len(texts))
+			}
+			// As the recognizer: the passages under -minconfidence, the
+			// sensitive ones included, are dropped before refining.
+			confident := func(spans []indecis.Span) []indecis.Span {
+				kept := spans[:0:0]
+				for _, s := range spans {
+					if s.Confidence >= *minConfidence {
+						kept = append(kept, s)
+					}
+				}
+				return kept
+			}
 			for i, t := range texts {
 				// One text at a time, as a server would.
 				d, err := m.Decide(context.Background(), t)
 				if err != nil {
-					return nil, err
+					return findings{}, err
 				}
 				var spans []indecis.Span
 				for _, q := range questions {
-					for _, s := range d[0][q].Spans {
+					// As the recognizer: a question the model lacks is an
+					// error, not a passage-free answer.
+					a, ok := d[0][q]
+					if !ok || a.Kind != indecis.Spans {
+						return findings{}, fmt.Errorf("%s has no spans question %s", dir, q)
+					}
+					for _, s := range confident(a.Spans) {
 						typ := s.Type
 						if *merge {
 							typ = "ANY"
@@ -182,12 +233,24 @@ func main() {
 					}
 				}
 				if *refine {
-					for _, m := range recognizer.Masks(t, spans, d[0]["entities"].Spans) {
+					// As the recognizer: the sensitive passages count only
+					// when the question is asked.
+					var sens []indecis.Span
+					if categories {
+						sens = confident(d[0]["sensitive"].Spans)
+					}
+					for _, s := range sens {
+						raw[i] = append(raw[i], entity{s.Start, s.End, s.Type})
+					}
+					for _, m := range recognizer.Masks(t, spans, d[0]["entities"].Spans, sens) {
 						out[i] = append(out[i], entity{m.Start, m.End, "ANY"})
+						if categories && m.Sensitive != "" {
+							flagged[i] = append(flagged[i], entity{m.Start, m.End, m.Sensitive})
+						}
 					}
 				}
 			}
-			return out, nil
+			return findings{out, flagged, raw}, nil
 		}})
 	}
 
@@ -198,19 +261,30 @@ func main() {
 	var report []result
 	for _, e := range engines {
 		start := time.Now()
-		found, err := e.find(texts)
+		f, err := e.find(texts)
 		if err != nil {
 			log.Fatal(err)
 		}
-		found = withoutIgnored(found, ignored)
+		found := withoutIgnored(f.found, ignored)
 		elapsed := time.Since(start)
 		r := score(e.name, gold, found)
 		r.Chars = leakage(texts, gold, found, ignored)
 		r.Seconds = elapsed.Seconds()
 		r.MsPerText = 1000 * elapsed.Seconds() / float64(len(texts))
 		r.MsPer1kBytes = 1000 * elapsed.Seconds() / (float64(chars) / 1000)
+		if f.flagged != nil {
+			// With -novel, the masks over ignored passages are left out, as
+			// from found.
+			c := countCategories(texts, sensitive, found, outsideIgnored(f.flagged, ignored), outsideIgnored(f.raw, ignored))
+			r.Categories = &c
+		}
 		report = append(report, r)
 		r.print()
+		if r.Categories != nil {
+			r.Categories.print()
+		} else if categories {
+			fmt.Println("  special categories: not reported, the engine gives none")
+		}
 		if *showErrors > 0 {
 			printErrors(texts, gold, found, *showErrors)
 		}
@@ -227,6 +301,19 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+}
+
+// label reads a labeled passage of text, and fails on one malformed or
+// out of the text.
+func label(text string, item any) (entity, error) {
+	m, _ := item.(map[string]any)
+	start, ok1 := m["start"].(float64)
+	end, ok2 := m["end"].(float64)
+	typ, ok3 := m["type"].(string)
+	if !ok1 || !ok2 || !ok3 || start < 0 || start >= end || int(end) > len(text) {
+		return entity{}, fmt.Errorf("malformed label %v", item)
+	}
+	return entity{int(start), int(end), typ}, nil
 }
 
 func loadGazetteer(name, path string) (*features.Gazetteer, error) {
@@ -297,18 +384,18 @@ func crfEngine(path, preset, firstNamesPath, gazetteers, clustersPath string) (e
 	if preset != "" {
 		name += " " + preset
 	}
-	return engine{name, func(texts []string) ([][]entity, error) {
+	return engine{name, func(texts []string) (findings, error) {
 		out := make([][]entity, len(texts))
 		for i, t := range texts {
 			ents, err := r.Recognize(t)
 			if err != nil {
-				return nil, err
+				return findings{}, err
 			}
 			for _, e := range ents {
 				out[i] = append(out[i], entity{e.Start, e.End, string(e.Type)})
 			}
 		}
-		return out, nil
+		return findings{found: out}, nil
 	}}, nil
 }
 
@@ -339,6 +426,8 @@ type result struct {
 	MsPerText    float64  `json:"ms_per_text"`
 	MsPer1kBytes float64  `json:"ms_per_1k_bytes"`
 	Chars        chars    `json:"chars"`
+	// Categories, with -refine and the sensitive question.
+	Categories *categories `json:"categories,omitempty"`
 }
 
 // chars measures masking character by character, whatever the types:
@@ -597,6 +686,21 @@ func withoutIgnored(found, ignored [][]entity) [][]entity {
 	return out
 }
 
+// outsideIgnored drops the passages that overlap an ignored labeled
+// passage, whatever their type: the flagged masks carry a category, not
+// the type of the labels.
+func outsideIgnored(list, ignored [][]entity) [][]entity {
+	out := make([][]entity, len(list))
+	for i, fs := range list {
+		for _, f := range fs {
+			if !slices.ContainsFunc(ignored[i], func(g entity) bool { return f.start < g.end && g.start < f.end }) {
+				out[i] = append(out[i], f)
+			}
+		}
+	}
+	return out
+}
+
 // printLeaks prints labeled passages with characters left unmasked, the
 // unmasked part in brackets, with their labels under every question.
 func printLeaks(texts []string, examples []dataset.Example, questions []string, found [][]entity, n int) {
@@ -667,4 +771,79 @@ func printExtra(texts []string, gold, found [][]entity, n int) {
 			}
 		}
 	}
+}
+
+// categories tells whether the refined masks keep the special category
+// of the labeled sensitive passages they mask: a mask without it is
+// treated by go-anon's users as any personal data. A passage counts as
+// masked, or flagged, when masks, or masks with a category, cover at
+// least half of its letters and digits. Flagged masks that overlap no
+// labeled sensitive passage are the cost. The model's own sensitive
+// passages, before refining, give the ceiling.
+type categories struct {
+	Labeled int `json:"labeled"` // labeled sensitive passages
+	Masked  int `json:"masked"`  // of those, masked
+	// Flagged: of the masked ones, those whose masks carry a category,
+	// any; Kept: the labeled one.
+	Flagged int `json:"flagged"`
+	Kept    int `json:"kept"`
+	// Ceiling: of the masked ones, those the model's sensitive passages
+	// cover before refining.
+	Ceiling int `json:"ceiling"`
+	// Masks flagged sensitive, and Stray those over no labeled sensitive
+	// passage.
+	Masks int `json:"masks"`
+	Stray int `json:"stray"`
+}
+
+func countCategories(texts []string, sensitive, found, flagged, raw [][]entity) categories {
+	covered := func(t string, g entity, list []entity, typ string) (n, of int) {
+		for i, r := range t[g.start:g.end] {
+			if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+				continue
+			}
+			of++
+			for _, e := range list {
+				if e.start <= g.start+i && g.start+i < e.end && (typ == "" || e.typ == typ) {
+					n++
+					break
+				}
+			}
+		}
+		return n, of
+	}
+	var c categories
+	for i, t := range texts {
+		for _, g := range sensitive[i] {
+			c.Labeled++
+			if n, of := covered(t, g, found[i], ""); of == 0 || 2*n < of {
+				continue
+			}
+			c.Masked++
+			if n, of := covered(t, g, raw[i], ""); 2*n >= of {
+				c.Ceiling++
+			}
+			if n, of := covered(t, g, flagged[i], ""); 2*n >= of {
+				c.Flagged++
+			}
+			if n, of := covered(t, g, flagged[i], g.typ); 2*n >= of {
+				c.Kept++
+			}
+		}
+		for _, f := range flagged[i] {
+			c.Masks++
+			if !slices.ContainsFunc(sensitive[i], func(g entity) bool { return g.start < f.end && f.start < g.end }) {
+				c.Stray++
+			}
+		}
+	}
+	return c
+}
+
+func (c categories) print() {
+	pct := func(a, b int) float64 { return 100 * float64(a) / float64(max(b, 1)) }
+	fmt.Printf("  special categories: %d labeled passages, %d masked; their mask flagged sensitive: %d (%.1f%%), with their category: %d (%.1f%%)\n",
+		c.Labeled, c.Masked, c.Flagged, pct(c.Flagged, c.Masked), c.Kept, pct(c.Kept, c.Masked))
+	fmt.Printf("  the model's sensitive passages, before refining, cover %d of them (%.1f%%)\n", c.Ceiling, pct(c.Ceiling, c.Masked))
+	fmt.Printf("  masks flagged sensitive: %d, over no labeled sensitive passage: %d (%.1f%%)\n", c.Masks, c.Stray, pct(c.Stray, c.Masks))
 }

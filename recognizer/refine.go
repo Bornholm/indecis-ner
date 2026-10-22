@@ -25,8 +25,9 @@ func init() {
 // ("[[é]]crasé" becomes "[[écrasé]]"), masks made only of function words
 // or punctuation are dropped, and masks separated only by spaces, commas
 // and function words are joined ("[magasinier] sur le [site]" becomes
-// one mask) when join allows it (nil: always). Masks come back sorted and
-// disjoint.
+// one mask) when join allows it (nil: always), as are masks that touch.
+// Masks that overlap are merged whatever join says. Masks come back
+// sorted and disjoint.
 func Refine(text string, spans []Span, join func(a, b Span) bool) []Span {
 	var out []Span
 	for _, s := range spans {
@@ -52,7 +53,7 @@ func Refine(text string, spans []Span, join func(a, b Span) bool) []Span {
 	sort.Slice(out, func(a, b int) bool { return out[a].Start < out[b].Start })
 	var merged []Span
 	for _, s := range out {
-		if n := len(merged); n > 0 && (s.Start <= merged[n-1].End ||
+		if n := len(merged); n > 0 && (s.Start < merged[n-1].End ||
 			filler(text[merged[n-1].End:s.Start]) && (join == nil || join(merged[n-1], s))) {
 			merged[n-1].End = max(merged[n-1].End, s.End)
 			continue

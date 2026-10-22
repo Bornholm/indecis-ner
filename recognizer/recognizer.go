@@ -55,7 +55,10 @@ type decided struct {
 }
 
 // Found is an entity returned by Recognize, with the special category
-// (GDPR article 9 or 10) of the sensitive passage it covers, if any.
+// (GDPR article 9 or 10) of the sensitive passage it covers, if any: one
+// category only, that of the passage it overlaps most, when it covers
+// several. It is that of the refined mask (Mask.Sensitive), by the same
+// rule (category) for an entity the filters added or reshaped.
 type Found struct {
 	ner.Entity
 	Sensitive string
@@ -145,20 +148,25 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 		}
 		typed = d[0]["entities"].Spans
 	}
-	kept := found[:0:0]
-	for _, s := range found {
-		if s.Confidence >= r.MinConfidence {
-			kept = append(kept, s)
+	// The sensitive passages too: below the threshold, they neither block
+	// a join nor flag a mask.
+	confident := func(spans []indecis.Span) []indecis.Span {
+		kept := spans[:0:0]
+		for _, s := range spans {
+			if s.Confidence >= r.MinConfidence {
+				kept = append(kept, s)
+			}
 		}
+		return kept
 	}
-	found = kept
+	found, sensitive = confident(found), confident(sensitive)
 	var out []ner.Entity
 	if r.Raw {
 		for _, s := range found {
 			out = append(out, ner.Entity{Text: s.Text, Type: ner.EntityType(s.Type), Start: s.Start, End: s.End, Confidence: s.Confidence})
 		}
 	} else {
-		for _, m := range Masks(text, found, typed) {
+		for _, m := range Masks(text, found, typed, sensitive) {
 			out = append(out, ner.Entity{Text: text[m.Start:m.End], Type: m.Type, Start: m.Start, End: m.End, Confidence: m.Confidence})
 		}
 	}
@@ -168,7 +176,7 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 	if r.OnFound != nil {
 		list := make([]Found, len(out))
 		for i, e := range out {
-			list[i] = Found{Entity: e, Sensitive: category(Span{e.Start, e.End}, sensitive)}
+			list[i] = Found{Entity: e, Sensitive: category(text, Span{e.Start, e.End}, sensitive)}
 		}
 		r.OnFound(text, list)
 	}
@@ -195,33 +203,71 @@ func steadyPlaceholders(text string) string {
 }
 
 // category returns the type of the sensitive passage that overlaps s the
-// most, if it covers at least half of s: a mask joined to a neighbour
-// does not take its category.
-func category(s Span, sensitive []indecis.Span) string {
-	cat, best := "", 0
-	for _, t := range sensitive {
-		if o := min(s.End, t.End) - max(s.Start, t.Start); o > best {
-			cat, best = t.Type, o
+// most, however little of s it covers, as long as the overlap holds a
+// word other than a function word: a mask that holds a special category
+// of data is sensitive as a whole. An overlap of function words alone
+// gives no category, so it does not keep Masks from joining s. The
+// overlap ends where the sensitive passage ends, which may cut a word: a
+// part of a word counts as a word, on the side of flagging. Between
+// passages that overlap s as much, the more confident wins, then the
+// first in the text, then the first type in alphabetical order: the
+// category does not depend on the order of the model's list.
+func category(text string, s Span, sensitive []indecis.Span) string {
+	var best *indecis.Span
+	most := 0
+	for i, t := range sensitive {
+		// The model's offsets, which Raw keeps as they are, are not
+		// trusted to fall within text.
+		start, end := max(s.Start, t.Start, 0), min(s.End, t.End, len(text))
+		o := end - start
+		if o <= 0 || o < most || !informative(text[start:end]) {
+			continue
 		}
+		if o == most && !better(t, *best) {
+			continue
+		}
+		best, most = &sensitive[i], o
 	}
-	if 2*best < s.End-s.Start {
+	if best == nil {
 		return ""
 	}
-	return cat
+	return best.Type
 }
 
-// Mask is a refined mask and its type.
+// better breaks a tie between two sensitive passages that overlap a mask
+// as much.
+func better(a, b indecis.Span) bool {
+	if a.Confidence != b.Confidence {
+		return a.Confidence > b.Confidence
+	}
+	if a.Start != b.Start {
+		return a.Start < b.Start
+	}
+	return a.Type < b.Type
+}
+
+// Mask is a refined mask, its type and its special category, if any.
 type Mask struct {
 	Span
 	Type       ner.EntityType
 	Confidence float64
+	Sensitive  string
 }
 
-// Masks refines the passages found by the mask questions (Refine) and
-// types each mask from the typed passages of the entities question.
-// Masks of a name or an identifier are not joined to their neighbours:
-// go-anon gives each name its own consistent placeholder.
-func Masks(text string, found, typed []indecis.Span) []Mask {
+// Masks refines the passages found by the mask questions (Refine), types
+// each mask from the typed passages of the entities question and gives
+// it the special category of the sensitive passages. Masks of a name or
+// an identifier are not joined to their neighbours over function words,
+// nor to those they touch:
+// go-anon gives each name its own consistent placeholder. Nor are masks of
+// different special categories, or a sensitive mask and one that is not.
+// Masks that overlap are merged whatever they hold: a mask that holds a
+// sensitive passage stays flagged, but with one category only, that of
+// the passage it overlaps most. That category is the merged mask's own:
+// joining two masks of one category may give a mask whose largest
+// overlap is a third passage, of another category, which it then
+// carries. It is never left without one.
+func Masks(text string, found, typed, sensitive []indecis.Span) []Mask {
 	spans := make([]Span, len(found))
 	for i, s := range found {
 		spans[i] = Span{s.Start, s.End}
@@ -230,10 +276,13 @@ func Masks(text string, found, typed []indecis.Span) []Mask {
 		t, _ := typeOf(s, typed, nil)
 		return t == "PERSON" || t == "CODE"
 	}
+	join := func(a, b Span) bool {
+		return !own(a) && !own(b) && category(text, a, sensitive) == category(text, b, sensitive)
+	}
 	var out []Mask
-	for _, s := range Refine(text, spans, func(a, b Span) bool { return !own(a) && !own(b) }) {
+	for _, s := range Refine(text, spans, join) {
 		typ, conf := typeOf(s, typed, found)
-		out = append(out, Mask{s, typ, conf})
+		out = append(out, Mask{s, typ, conf, category(text, s, sensitive)})
 	}
 	return out
 }
