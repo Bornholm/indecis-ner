@@ -47,26 +47,29 @@ func Refine(text string, spans []Span, join func(a, b Span) bool) []Span {
 			s.End++
 		}
 		// A mask grows only where it cuts a word: its edge is a letter or
-		// a digit, or a sign between two of them ("des rendez-" takes
-		// "vous", "/03/1980" takes "12"). A mask that starts or ends on a
-		// space, or on a comma before a space, does not take the word next
-		// to it, which may be another mask's. Where it does, and that word
-		// is another mask, the two overlap and are merged whatever join
-		// says: a sign inside a word rarely separates two passages.
+		// a digit, or a sign between two of them. It then grows to the
+		// whole word, over such signs too: "des rendez-" and "vous" take
+		// "rendez-vous", "/1980" takes "12/03/1980". A mask that starts or
+		// ends on a space, or on a comma before a space, does not take the
+		// word next to it, which may be another mask's. Where it does, and
+		// that word is another mask, the two overlap and are merged
+		// whatever join says: a sign inside a word rarely separates two
+		// passages, though any sign counts, a full stop without a space
+		// after it included.
 		first, _ := utf8.DecodeRuneInString(text[s.Start:])
 		last, size := utf8.DecodeLastRuneInString(text[:s.End])
 		left := isWordRune(first) || joins(text, s.Start)
 		right := isWordRune(last) || joins(text, s.End-size)
 		for left && s.Start > 0 {
 			r, size := utf8.DecodeLastRuneInString(text[:s.Start])
-			if !isWordRune(r) {
+			if !isWordRune(r) && !joins(text, s.Start-size) {
 				break
 			}
 			s.Start -= size
 		}
 		for right && s.End < len(text) {
 			r, size := utf8.DecodeRuneInString(text[s.End:])
-			if !isWordRune(r) {
+			if !isWordRune(r) && !joins(text, s.End) {
 				break
 			}
 			s.End += size

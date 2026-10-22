@@ -89,8 +89,14 @@ func TestRefineEdges(t *testing.T) {
 		{at("'hôpital"), "l'hôpital"},
 		{at("/03/1980"), "12/03/1980"},
 		{at("12/03/"), "12/03/1980"},
+		// Past the edge, the mask grows over the signs between letters or
+		// digits too.
+		{at("/1980"), "12/03/1980"},
+		{at("12/03"), "12/03/1980"},
+		{at("vous"), "rendez-vous"},
+		{at("l'"), "l'hôpital"},
 		{at(",75 m"), "1,75 m"},
-		{at("hôpital, "), "hôpital,"},
+		{at("hôpital, "), "l'hôpital,"},
 	} {
 		got := Refine(text, []Span{c.in}, nil)
 		if len(got) != 1 || text[got[0].Start:got[0].End] != c.want {
@@ -176,6 +182,27 @@ func TestMasksOverlapTwoCategories(t *testing.T) {
 		got = append(got, text[m.Start:m.End]+" "+m.Sensitive)
 	}
 	want := []string{"jeûne pendant le ramadan malgré son diabète BELIEF", "asthme HEALTH"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// A mask grown over a sign between two words takes the word of another
+// mask: the two overlap and are merged whatever their categories, the
+// loss of #2 that remains at such a sign.
+func TestMasksJoiningSign(t *testing.T) {
+	text := "Il a des rendez-vous médicaux le vendredi."
+	at := func(s, typ string) indecis.Span {
+		i := strings.Index(text, s)
+		return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ}
+	}
+	found := []indecis.Span{at("rendez-", "QUASI"), at("vous médicaux", "QUASI")}
+	sensitive := []indecis.Span{at("rendez-", "BELIEF"), at("vous médicaux", "HEALTH")}
+	var got []string
+	for _, m := range Masks(text, found, nil, sensitive) {
+		got = append(got, text[m.Start:m.End]+" "+m.Sensitive)
+	}
+	want := []string{"rendez-vous médicaux HEALTH"}
 	if !slices.Equal(got, want) {
 		t.Errorf("got %q, want %q", got, want)
 	}
