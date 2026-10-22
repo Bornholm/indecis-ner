@@ -38,6 +38,71 @@ func TestRefine(t *testing.T) {
 	}
 }
 
+// A mask that starts or ends on a space or a comma does not grow over
+// the word next to it (#2): only a mask cut inside a word grows.
+func TestRefineEdges(t *testing.T) {
+	text := "Elle consulte pour son diabète, avant la prière du vendredi."
+	at := func(s string) Span {
+		i := strings.Index(text, s)
+		if i < 0 {
+			t.Fatalf("%q not in text", s)
+		}
+		return Span{i, i + len(s)}
+	}
+	for _, c := range []struct {
+		in   Span
+		want string
+	}{
+		{at(" avant la prière"), " avant la prière"},
+		{at("diabète, "), "diabète, "},
+		{at(", avant"), ", avant"},
+		{at("abète, av"), "diabète, avant"},
+		{Span{at("prière").Start + 2, at("prière").End - 1}, "prière"}, // "è" is two bytes
+		{at("son diabète, avant"), "son diabète, avant"},
+	} {
+		got := Refine(text, []Span{c.in}, nil)
+		if len(got) != 1 || text[got[0].Start:got[0].End] != c.want {
+			t.Errorf("%q: got %v, want %q", text[c.in.Start:c.in.End], got, c.want)
+		}
+	}
+	// A hyphen or an apostrophe at the edge cuts a word.
+	text = "Des rendez-vous à l'hôpital."
+	for _, c := range []struct {
+		in   Span
+		want string
+	}{
+		{at("Des rendez-"), "Des rendez-vous"},
+		{at("-vous à"), "rendez-vous à"},
+		{at("'hôpital"), "l'hôpital"},
+	} {
+		got := Refine(text, []Span{c.in}, nil)
+		if len(got) != 1 || text[got[0].Start:got[0].End] != c.want {
+			t.Errorf("%q: got %v, want %q", text[c.in.Start:c.in.End], got, c.want)
+		}
+	}
+}
+
+// The example of #2: a mask that starts on a space no longer takes the
+// sensitive word before it, which keeps its own category.
+func TestMasksLeadingSpace(t *testing.T) {
+	text := "Elle consulte pour son diabète avant la prière du vendredi."
+	at := func(s, typ string) indecis.Span {
+		i := strings.Index(text, s)
+		return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ}
+	}
+	diabetes := at("diabète", "HEALTH")
+	found := []indecis.Span{diabetes, at(" avant la prière du vendredi", "QUASI")}
+	sensitive := []indecis.Span{diabetes, at("prière du vendredi", "BELIEF")}
+	var got []string
+	for _, m := range Masks(text, found, nil, sensitive) {
+		got = append(got, text[m.Start:m.End]+" "+m.Sensitive)
+	}
+	want := []string{"diabète HEALTH", " avant la prière du vendredi BELIEF"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 func TestSteadyPlaceholders(t *testing.T) {
 	in := "Bonjour ⟦PERSON_1_c471b2⟧, voir ⟦CODE_12_0a9f⟧ et ⟦x⟧."
 	got := steadyPlaceholders(in)

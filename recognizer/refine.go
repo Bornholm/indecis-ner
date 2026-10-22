@@ -21,32 +21,42 @@ func init() {
 	}
 }
 
-// Refine makes masks easier to trust: each mask grows to whole words
-// ("[[é]]crasé" becomes "[[écrasé]]"), masks made only of function words
-// or punctuation are dropped, and masks separated only by spaces, commas
-// and function words are joined ("[magasinier] sur le [site]" becomes
-// one mask) when join allows it (nil: always), as are masks that touch.
+// Refine makes masks easier to trust: each mask cut inside a word grows
+// to the whole word ("[[é]]crasé" becomes "[[écrasé]]"), masks made only
+// of function words or punctuation are dropped, and masks separated only
+// by spaces, commas and function words are joined ("[magasinier] sur le
+// [site]" becomes one mask) when join allows it (nil: always), as are
+// masks that touch.
 // Masks that overlap are merged whatever join says. Masks come back
 // sorted and disjoint.
 func Refine(text string, spans []Span, join func(a, b Span) bool) []Span {
 	var out []Span
 	for _, s := range spans {
 		s.Start, s.End = max(s.Start, 0), min(s.End, len(text))
-		for s.Start > 0 {
+		if s.Start >= s.End {
+			continue
+		}
+		// A mask grows only where it cuts a word: a mask that starts or
+		// ends on a space or a comma keeps that edge, instead of taking
+		// the word next to it, which may be another mask's. A hyphen or an
+		// apostrophe is inside a word: "des rendez-" takes "vous".
+		first, _ := utf8.DecodeRuneInString(text[s.Start:])
+		last, _ := utf8.DecodeLastRuneInString(text[:s.End])
+		for (isWordRune(first) || inWord(first)) && s.Start > 0 {
 			r, size := utf8.DecodeLastRuneInString(text[:s.Start])
 			if !isWordRune(r) {
 				break
 			}
 			s.Start -= size
 		}
-		for s.End < len(text) {
+		for (isWordRune(last) || inWord(last)) && s.End < len(text) {
 			r, size := utf8.DecodeRuneInString(text[s.End:])
 			if !isWordRune(r) {
 				break
 			}
 			s.End += size
 		}
-		if s.Start < s.End && informative(text[s.Start:s.End]) {
+		if informative(text[s.Start:s.End]) {
 			out = append(out, s)
 		}
 	}
@@ -64,6 +74,10 @@ func Refine(text string, spans []Span, join func(a, b Span) bool) []Span {
 }
 
 func isWordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
+
+// inWord reports whether r joins the parts of a word: hyphens and
+// apostrophes.
+func inWord(r rune) bool { return strings.ContainsRune("-‐'’", r) }
 
 // words splits a passage into lowercase words.
 func words(s string) []string {
