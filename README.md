@@ -212,7 +212,7 @@ A refined mask carries the special category of the sensitive passages it holds, 
 | Targeted prose, 20 docs | 93.0% | 74.4% / 95.3% | 74.4% / 95.3% | 18 / 38 |
 | Unseen templates, 300 docs | 89.2% | 78.4% / 89.2% | 76.3% / 87.1% | 45 / 168 |
 
-- What is masked does not change: the leak and the masked characters are the same to the character, at bias 5 and 6.
+- The leak and the masked characters `compare` counts are the same to the character, at bias 5 and 6. They leave function words, spaces and punctuation out: between two masks no longer joined, these are now left readable in the output.
 - Joining loses up to 35 points of the categories the model found. Without joining across categories but with the former rule (a category covering at least half of the mask), 72% to 82% are flagged.
 - The cost is masks flagged sensitive that hold no labeled special category: the adapter's users see more sensitive masks, the safe side for what a category protects. And more masks side by side: "elle [accompagne son fils] [à ses séances de chimiothérapie]".
 

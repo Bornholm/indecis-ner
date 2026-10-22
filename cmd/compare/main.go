@@ -214,7 +214,13 @@ func main() {
 				}
 				var spans []indecis.Span
 				for _, q := range questions {
-					for _, s := range confident(d[0][q].Spans) {
+					// As the recognizer: a question the model lacks is an
+					// error, not a passage-free answer.
+					a, ok := d[0][q]
+					if !ok || a.Kind != indecis.Spans {
+						return findings{}, fmt.Errorf("%s has no spans question %s", dir, q)
+					}
+					for _, s := range confident(a.Spans) {
 						typ := s.Type
 						if *merge {
 							typ = "ANY"
@@ -231,11 +237,7 @@ func main() {
 					// when the question is asked.
 					var sens []indecis.Span
 					if categories {
-						a, ok := d[0]["sensitive"]
-						if !ok || a.Kind != indecis.Spans {
-							return findings{}, fmt.Errorf("%s has no spans question sensitive", dir)
-						}
-						sens = confident(a.Spans)
+						sens = confident(d[0]["sensitive"].Spans)
 					}
 					for _, s := range sens {
 						raw[i] = append(raw[i], entity{s.Start, s.End, s.Type})
@@ -280,6 +282,8 @@ func main() {
 		r.print()
 		if r.Categories != nil {
 			r.Categories.print()
+		} else if categories {
+			fmt.Println("  special categories: not reported, the engine gives none")
 		}
 		if *showErrors > 0 {
 			printErrors(texts, gold, found, *showErrors)

@@ -57,8 +57,8 @@ type decided struct {
 // Found is an entity returned by Recognize, with the special category
 // (GDPR article 9 or 10) of the sensitive passage it covers, if any: one
 // category only, that of the passage it overlaps most, when it covers
-// several. A refined mask keeps its own (Mask.Sensitive); an entity that
-// the filters added or reshaped takes it by the same rule (category).
+// several. It is that of the refined mask (Mask.Sensitive), by the same
+// rule (category) for an entity the filters added or reshaped.
 type Found struct {
 	ner.Entity
 	Sensitive string
@@ -161,16 +161,12 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 	}
 	found, sensitive = confident(found), confident(sensitive)
 	var out []ner.Entity
-	// cats holds the category of each refined mask, which the filters
-	// may leave as it is.
-	cats := map[Span]string{}
 	if r.Raw {
 		for _, s := range found {
 			out = append(out, ner.Entity{Text: s.Text, Type: ner.EntityType(s.Type), Start: s.Start, End: s.End, Confidence: s.Confidence})
 		}
 	} else {
 		for _, m := range Masks(text, found, typed, sensitive) {
-			cats[m.Span] = m.Sensitive
 			out = append(out, ner.Entity{Text: text[m.Start:m.End], Type: m.Type, Start: m.Start, End: m.End, Confidence: m.Confidence})
 		}
 	}
@@ -180,11 +176,7 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 	if r.OnFound != nil {
 		list := make([]Found, len(out))
 		for i, e := range out {
-			cat, ok := cats[Span{e.Start, e.End}]
-			if !ok {
-				cat = category(text, Span{e.Start, e.End}, sensitive)
-			}
-			list[i] = Found{Entity: e, Sensitive: cat}
+			list[i] = Found{Entity: e, Sensitive: category(text, Span{e.Start, e.End}, sensitive)}
 		}
 		r.OnFound(text, list)
 	}
@@ -214,7 +206,9 @@ func steadyPlaceholders(text string) string {
 // most, however little of s it covers, as long as the overlap holds a
 // word other than a function word: a mask that holds a special category
 // of data is sensitive as a whole. An overlap of function words alone
-// gives no category, so it does not keep Masks from joining s. Between
+// gives no category, so it does not keep Masks from joining s. The
+// overlap ends where the sensitive passage ends, which may cut a word: a
+// part of a word counts as a word, on the side of flagging. Between
 // passages that overlap s as much, the more confident wins, then the
 // first in the text, then the first type in alphabetical order: the
 // category does not depend on the order of the model's list.
@@ -263,7 +257,8 @@ type Mask struct {
 // Masks refines the passages found by the mask questions (Refine), types
 // each mask from the typed passages of the entities question and gives
 // it the special category of the sensitive passages. Masks of a name or
-// an identifier are not joined to their neighbours over function words:
+// an identifier are not joined to their neighbours over function words,
+// nor to those they touch:
 // go-anon gives each name its own consistent placeholder. Nor are masks of
 // different special categories, or a sensitive mask and one that is not.
 // Masks that overlap are merged whatever they hold: a mask that holds a

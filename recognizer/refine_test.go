@@ -88,6 +88,38 @@ func TestMasksOverlapTwoCategories(t *testing.T) {
 	}
 }
 
+// Masks that touch, without a character in between, are joined as masks
+// separated by function words: only within one category. They touch once
+// grown to whole words: here, over the comma that ends the first one.
+func TestMasksTouching(t *testing.T) {
+	text := "Elle consulte pour son diabète, avant la prière du vendredi."
+	at := func(s, typ string) indecis.Span {
+		i := strings.Index(text, s)
+		return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ}
+	}
+	diabetes, prayer := at("diabète", "HEALTH"), at(" avant la prière du vendredi", "QUASI")
+	diabetes.End++ // the comma
+	found := []indecis.Span{diabetes, prayer}
+	if diabetes.End != prayer.Start {
+		t.Fatal("the masks do not touch")
+	}
+	for _, c := range []struct {
+		sensitive []indecis.Span
+		want      []string
+	}{
+		{[]indecis.Span{diabetes, at("prière du vendredi", "BELIEF")}, []string{"diabète, HEALTH", " avant la prière du vendredi BELIEF"}},
+		{[]indecis.Span{diabetes, at("prière du vendredi", "HEALTH")}, []string{"diabète, avant la prière du vendredi HEALTH"}},
+	} {
+		var got []string
+		for _, m := range Masks(text, found, nil, c.sensitive) {
+			got = append(got, text[m.Start:m.End]+" "+m.Sensitive)
+		}
+		if !slices.Equal(got, c.want) {
+			t.Errorf("got %q, want %q", got, c.want)
+		}
+	}
+}
+
 // Between two sensitive passages that overlap a mask as much, the more
 // confident wins, then the first in the text, whatever the order of the
 // model's list.
