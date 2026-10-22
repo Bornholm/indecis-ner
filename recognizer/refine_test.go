@@ -48,10 +48,11 @@ func TestSteadyPlaceholders(t *testing.T) {
 
 // A sensitive passage keeps its category in its mask: the masks around
 // it are not joined to it, and a mask that holds it, however long, takes
-// it. The model's spans for a sentence of the demonstration document of
+// it. Masks of one category are still joined, names still are not. The model's spans for a sentence of the demonstration document of
 // indecis-caviardage, where the joined mask once came out as a place.
 func TestMasksSensitive(t *testing.T) {
-	text := "Elle fréquente avec ses enfants à la synagogue de Chalon. Son fils aîné est suivi au CMP pour des troubles de l'attention."
+	text := "Elle fréquente avec ses enfants à la synagogue de Chalon. Son fils aîné est suivi au CMP pour des troubles de l'attention. " +
+		"Elle a une lombalgie chronique et un asthme. Mme Roux, infirmière, la remplace."
 	at := func(s string, typ string) indecis.Span {
 		i := strings.Index(text, s)
 		if i < 0 {
@@ -63,14 +64,21 @@ func TestMasksSensitive(t *testing.T) {
 		at("fréquente avec", "QUASI"),
 		at("ses enfants à la synagogue de Chalon", "QUASI"),
 		at("Son fils aîné est suivi au CMP pour des troubles de l'attention", "QUASI"),
+		at("lombalgie chronique", "QUASI"),
+		at("asthme", "QUASI"),
+		at("Mme Roux", "DIRECT"),
+		at("infirmière", "QUASI"),
 	}
 	sensitive := []indecis.Span{
 		at("ses", "BELIEF"), // a function word alone gives no category
 		at("la synagogue de Chalon", "BELIEF"),
 		at("troubles de l'attention", "HEALTH"),
+		at("lombalgie chronique", "HEALTH"),
+		at("asthme", "HEALTH"),
 	}
 	found = append(found, sensitive...)
-	typed := []indecis.Span{at("ses enfants", "MISC"), at("la synagogue de Chalon", "LOC"), at("Son fils aîné", "DEM")}
+	typed := []indecis.Span{at("ses enfants", "MISC"), at("la synagogue de Chalon", "LOC"), at("Son fils aîné", "DEM"),
+		at("Mme Roux", "PERSON"), at("infirmière", "DEM")}
 	var got []string
 	for _, m := range Masks(text, found, typed, sensitive) {
 		got = append(got, text[m.Start:m.End]+" "+m.Sensitive)
@@ -79,6 +87,11 @@ func TestMasksSensitive(t *testing.T) {
 		"fréquente avec ",
 		"ses enfants à la synagogue de Chalon BELIEF",
 		"Son fils aîné est suivi au CMP pour des troubles de l'attention HEALTH",
+		// Two masks of the same category are joined over function words.
+		"lombalgie chronique et un asthme HEALTH",
+		// A name is not, though neither is sensitive.
+		"Mme Roux ",
+		"infirmière ",
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("got %q, want %q", got, want)

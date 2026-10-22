@@ -145,13 +145,18 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 		}
 		typed = d[0]["entities"].Spans
 	}
-	kept := found[:0:0]
-	for _, s := range found {
-		if s.Confidence >= r.MinConfidence {
-			kept = append(kept, s)
+	// The sensitive passages too: below the threshold, they neither block
+	// a join nor flag a mask.
+	confident := func(spans []indecis.Span) []indecis.Span {
+		kept := spans[:0:0]
+		for _, s := range spans {
+			if s.Confidence >= r.MinConfidence {
+				kept = append(kept, s)
+			}
 		}
+		return kept
 	}
-	found = kept
+	found, sensitive = confident(found), confident(sensitive)
 	var out []ner.Entity
 	if r.Raw {
 		for _, s := range found {
@@ -197,8 +202,8 @@ func steadyPlaceholders(text string) string {
 // category returns the type of the sensitive passage that overlaps s the
 // most, however little of s it covers, as long as the overlap holds a
 // word other than a function word: a mask that holds a special category
-// of data is sensitive as a whole. Masks does not join a sensitive mask
-// to a neighbour that is not.
+// of data is sensitive as a whole. An overlap of function words alone
+// gives no category, so it does not keep Masks from joining s.
 func category(text string, s Span, sensitive []indecis.Span) string {
 	cat, best := "", 0
 	for _, t := range sensitive {
@@ -221,10 +226,12 @@ type Mask struct {
 // Masks refines the passages found by the mask questions (Refine), types
 // each mask from the typed passages of the entities question and gives
 // it the special category of the sensitive passages. Masks of a name or
-// an identifier are not joined to their neighbours: go-anon gives each
-// name its own consistent placeholder. Nor are masks of different special
-// categories, or a sensitive mask and one that is not: the joined mask
-// would carry one category only, or the one of a passage too small in it.
+// an identifier are not joined to their neighbours over function words:
+// go-anon gives each name its own consistent placeholder. Nor are masks of
+// different special categories, or a sensitive mask and one that is not.
+// Masks that overlap are merged whatever they hold: a mask that holds a
+// sensitive passage stays flagged, but with one category only, that of
+// the passage it overlaps most.
 func Masks(text string, found, typed, sensitive []indecis.Span) []Mask {
 	spans := make([]Span, len(found))
 	for i, s := range found {

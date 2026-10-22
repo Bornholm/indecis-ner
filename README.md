@@ -182,7 +182,7 @@ So 150 more training documents were written with indirect phrasings (fasting, a 
 
 What matters is how much personal data stays readable, not whether each passage gets the right type or exact bounds. `compare -question mask,sensitive -merge` scores the union of the two questions against the union of their labels, and reports characters: the share of the characters of labeled passages left unmasked (the leak), the share of masked characters that belong to a labeled passage, and the documents with no leak. Spaces, punctuation and function words (articles, prepositions, possessives) are not counted, as TAB leaves them out: an unmasked "le" before a masked "service de pneumologie" leaks nothing.
 
-`-refine` applies what the go-anon adapter does (`recognizer.Masks`): masks grow to whole words ("[[é]]crasé" is masked as "écrasé"), masks of function words alone are dropped, and masks separated only by function words and commas are joined ("magasinier sur le site de Stains" becomes one mask), except across a sentence, except for names and identifiers, which keep their own placeholder, and except between masks of different special categories, or a sensitive mask and one that is not (see below).
+`-refine` applies what the go-anon adapter does (`recognizer.Masks`): masks grow to whole words ("[[é]]crasé" is masked as "écrasé"), masks of function words alone are dropped, and masks separated only by function words and commas are joined ("magasinier sur le site de Stains" becomes one mask), except across a sentence, except for names and identifiers, which keep their own placeholder, and except between masks of different special categories, or a sensitive mask and one that is not (see below). Masks that overlap are merged in any case.
 
 `runs/work-ind`, int8, refined, by decoding bias:
 
@@ -200,9 +200,9 @@ What matters is how much personal data stays readable, not whether each passage 
 
 ### Special categories after refining
 
-A refined mask carries the special category of the sensitive passages it holds, for the adapter's users (`Found.Sensitive`, `Mask.Sensitive`): one that releases the masks of a type, for instance, keeps the sensitive ones. Joining used to lose it. "fréquente avec" and "ses enfants à la synagogue de Chalon" became one mask, and the sensitive passage "la synagogue de Chalon" (`BELIEF`) covered less than half of it, which then took no category, and the type of a place. Masks are now joined only within the same category, none included, and a mask takes the category of the sensitive passage it overlaps most, however little of it, as long as the overlap holds a word other than a function word.
+A refined mask carries the special category of the sensitive passages it holds, for the adapter's users (`Found.Sensitive`, `Mask.Sensitive`): one that releases the masks of a type, for instance, keeps the sensitive ones. Joining used to lose it. "fréquente avec" and "ses enfants à la synagogue de Chalon" became one mask, and the sensitive passage "la synagogue de Chalon" (`BELIEF`) covered less than half of it, which then took no category, and the type of a place. Masks separated by function words are now joined only within the same category, none included, and a mask takes the category of the sensitive passage it overlaps most, however little of it, as long as the overlap holds a word other than a function word. Masks that overlap are still merged: the mask stays flagged, but carries one category only when it holds two, that of the passage it overlaps most.
 
-`compare -refine` reports, among the labeled sensitive passages masked, those whose mask carries a category: covered at least half by such masks. `runs/work-fam-p576`, int8, bias 6:
+`compare -refine`, with the `sensitive` question, reports, among the labeled sensitive passages masked, those whose mask carries a category: covered at least half by such masks. `runs/work-fam-p576`, int8, bias 6:
 
 | Test set | Model's sensitive passages, before refining | Flagged, before | Flagged, now | Flagged masks over no labeled sensitive passage, before / now |
 | --- | --- | --- | --- | --- |

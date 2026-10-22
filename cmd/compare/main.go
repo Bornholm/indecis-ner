@@ -82,19 +82,33 @@ func main() {
 	}
 	seenTypes := map[string]bool{}
 	gold := make([][]entity, len(examples))
-	// sensitive holds the labeled special categories, whatever -question,
-	// for the categories the refined masks keep.
+	// sensitive holds the labeled special categories, for the categories
+	// the refined masks keep: with -refine and the sensitive question.
 	sensitive := make([][]entity, len(examples))
+	questions := strings.Split(*question, ",")
+	categories := *refine && slices.Contains(questions, "sensitive")
 	ignored := make([][]entity, len(examples)) // labeled but not novel
 	kept, dropped := 0, 0
 	texts := make([]string, len(examples))
-	questions := strings.Split(*question, ",")
 	for i, e := range examples {
 		texts[i] = e.Text
 		l, _ := e.Labels["sensitive"].([]any)
 		for _, item := range l {
-			m := item.(map[string]any)
-			sensitive[i] = append(sensitive[i], entity{int(m["start"].(float64)), int(m["end"].(float64)), m["type"].(string)})
+			if !categories {
+				break
+			}
+			m, _ := item.(map[string]any)
+			start, ok1 := m["start"].(float64)
+			end, ok2 := m["end"].(float64)
+			typ, ok3 := m["type"].(string)
+			if !ok1 || !ok2 || !ok3 || start < 0 || start >= end || int(end) > len(e.Text) {
+				continue
+			}
+			// With -novel, as the other labels.
+			if lex != nil && !lex.Novel(typ, e.Text[int(start):int(end)]) {
+				continue
+			}
+			sensitive[i] = append(sensitive[i], entity{int(start), int(end), typ})
 		}
 		var list []any
 		for _, q := range questions {
@@ -196,10 +210,16 @@ func main() {
 					}
 				}
 				if *refine {
-					for _, s := range d[0]["sensitive"].Spans {
+					// As the recognizer: the sensitive passages count only
+					// when the question is asked.
+					var sens []indecis.Span
+					if categories {
+						sens = d[0]["sensitive"].Spans
+					}
+					for _, s := range sens {
 						raw[i] = append(raw[i], entity{s.Start, s.End, s.Type})
 					}
-					for _, m := range recognizer.Masks(t, spans, d[0]["entities"].Spans, d[0]["sensitive"].Spans) {
+					for _, m := range recognizer.Masks(t, spans, d[0]["entities"].Spans, sens) {
 						out[i] = append(out[i], entity{m.Start, m.End, "ANY"})
 						if m.Sensitive != "" {
 							flagged[i] = append(flagged[i], entity{m.Start, m.End, m.Sensitive})
@@ -231,8 +251,10 @@ func main() {
 		r.MsPer1kBytes = 1000 * elapsed.Seconds() / (float64(chars) / 1000)
 		report = append(report, r)
 		r.print()
-		if *refine && flagged != nil {
-			printCategories(texts, sensitive, found, flagged, raw)
+		if categories && flagged != nil {
+			// With -novel, the masks over ignored passages are left out, as
+			// from found.
+			printCategories(texts, sensitive, found, outsideIgnored(flagged, ignored), outsideIgnored(raw, ignored))
 			flagged, raw = nil, nil
 		}
 		if *showErrors > 0 {
@@ -616,6 +638,21 @@ func withoutIgnored(found, ignored [][]entity) [][]entity {
 				}
 			}
 			out[i] = append(out[i], f)
+		}
+	}
+	return out
+}
+
+// outsideIgnored drops the passages that overlap an ignored labeled
+// passage, whatever their type: the flagged masks carry a category, not
+// the type of the labels.
+func outsideIgnored(list, ignored [][]entity) [][]entity {
+	out := make([][]entity, len(list))
+	for i, fs := range list {
+		for _, f := range fs {
+			if !slices.ContainsFunc(ignored[i], func(g entity) bool { return f.start < g.end && g.start < f.end }) {
+				out[i] = append(out[i], f)
+			}
 		}
 	}
 	return out
