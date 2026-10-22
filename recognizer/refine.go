@@ -23,7 +23,7 @@ func init() {
 
 // Refine makes masks easier to trust: each mask cut inside a word grows
 // to the whole word ("[[é]]crasé" becomes "[[écrasé]]") and leaves out
-// the spaces at its edges; empty masks and masks made only of function
+// the spaces and the punctuation of sentences at its edges; empty masks and masks made only of function
 // words or punctuation are dropped; masks separated only by spaces,
 // commas and function words are joined ("[magasinier] sur le [site]"
 // becomes one mask) when join allows it (nil: always), as are masks that
@@ -74,19 +74,23 @@ func Refine(text string, spans []Span, join func(a, b Span) bool) []Span {
 			}
 			s.End += size
 		}
-		// Spaces at the edges are left out: two masks that shared the
-		// space between them would overlap, and be merged whatever join
-		// says. Other signs stay masked, as the % of "80 %".
+		// Spaces and the punctuation of sentences at the edges are left
+		// out: two masks that shared the space between them would
+		// overlap, and be merged whatever join says, and the full stop
+		// after a number is not part of it. Other signs stay masked, as
+		// the % of "80 %".
+		// So is a bracket whose partner is outside the mask: "(1 245,60 €)"
+		// masked as "1 245,60 €)" leaves "(" readable, and then ")".
 		for s.Start < s.End {
 			r, size := utf8.DecodeRuneInString(text[s.Start:])
-			if !unicode.IsSpace(r) {
+			if !edge(r) && !unpaired(text[s.Start:s.End], r) {
 				break
 			}
 			s.Start += size
 		}
 		for s.Start < s.End {
 			r, size := utf8.DecodeLastRuneInString(text[s.Start:s.End])
-			if !unicode.IsSpace(r) {
+			if !edge(r) && !unpaired(text[s.Start:s.End], r) {
 				break
 			}
 			s.End -= size
@@ -109,6 +113,19 @@ func Refine(text string, spans []Span, join func(a, b Span) bool) []Span {
 }
 
 func isWordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
+
+// edge reports whether Refine leaves r out of a mask's edges: spaces and
+// the punctuation of sentences.
+func edge(r rune) bool { return unicode.IsSpace(r) || strings.ContainsRune(".,;:!?…", r) }
+
+// pairs maps each bracket to its partner.
+var pairs = map[rune]rune{'(': ')', ')': '(', '[': ']', ']': '[', '«': '»', '»': '«'}
+
+// unpaired reports whether r is a bracket whose partner is not in mask.
+func unpaired(mask string, r rune) bool {
+	p, ok := pairs[r]
+	return ok && !strings.ContainsRune(mask, p)
+}
 
 // joins reports whether the rune at i in text is a sign between two
 // letters or digits, which joins the parts of a word or a number: the

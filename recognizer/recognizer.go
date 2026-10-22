@@ -21,7 +21,9 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/bornholm/go-anon/pkg/ner"
 	"github.com/bornholm/indecis"
@@ -280,11 +282,78 @@ func Masks(text string, found, typed, sensitive []indecis.Span) []Mask {
 		return !own(a) && !own(b) && category(text, a, sensitive) == category(text, b, sensitive)
 	}
 	var out []Mask
-	for _, s := range Refine(text, spans, join) {
-		typ, conf := typeOf(s, typed, found)
-		out = append(out, Mask{s, typ, conf, category(text, s, sensitive)})
+	for _, m := range Refine(text, spans, join) {
+		for _, s := range split(text, m, typed) {
+			typ, conf := typeOf(s, typed, found)
+			out = append(out, Mask{s, typ, conf, category(text, s, sensitive)})
+		}
 	}
 	return out
+}
+
+// split cuts a mask that holds several names or identifiers of the typed
+// passages into one mask each: the model may give "06 42 18 77 05,
+// nadia.ferrand@laposte.net" as one passage to mask, which go-anon would
+// replace by one placeholder. Between two of them, the punctuation and
+// function words that follow the first are left readable, and the rest
+// goes with the next, as its civility ("et M. Paul Martin"). What comes
+// before the first stays with it ("Mme Carmen Roussel"); what follows
+// the last is a mask of its own.
+func split(text string, m Span, typed []indecis.Span) []Span {
+	var in []Span
+	for _, t := range typed {
+		if (t.Type == "PERSON" || t.Type == "CODE") && t.Start < m.End && m.Start < t.End {
+			in = append(in, Span{max(t.Start, m.Start), min(t.End, m.End)})
+		}
+	}
+	slices.SortFunc(in, func(a, b Span) int { return a.Start - b.Start })
+	var owns []Span
+	for _, s := range in {
+		if n := len(owns); n > 0 && s.Start < owns[n-1].End {
+			owns[n-1].End = max(owns[n-1].End, s.End)
+			continue
+		}
+		owns = append(owns, s)
+	}
+	if len(owns) < 2 {
+		return []Span{m}
+	}
+	var pieces []Span
+	start := m.Start
+	for i := range len(owns) - 1 {
+		pieces = append(pieces, Span{start, owns[i].End})
+		start = skipFiller(text, owns[i].End, owns[i+1].Start)
+	}
+	last := owns[len(owns)-1].End
+	pieces = append(pieces, Span{start, last}, Span{last, m.End})
+	// Refine trims the pieces and drops the gaps of function words; the
+	// pieces are not joined again.
+	return Refine(text, pieces, func(Span, Span) bool { return false })
+}
+
+// skipFiller returns where the first word other than a function word
+// starts in text[from:to], to if there is none.
+func skipFiller(text string, from, to int) int {
+	for i := from; i < to; {
+		r, size := utf8.DecodeRuneInString(text[i:])
+		if !isWordRune(r) {
+			i += size
+			continue
+		}
+		j := i
+		for j < to {
+			r, size := utf8.DecodeRuneInString(text[j:])
+			if !isWordRune(r) {
+				break
+			}
+			j += size
+		}
+		if !FunctionWords[strings.ToLower(text[i:j])] {
+			return i
+		}
+		i = j
+	}
+	return to
 }
 
 // typeOf names a mask after the typed passage it overlaps most, MISC if
