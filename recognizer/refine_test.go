@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bornholm/go-anon/pkg/ner"
 	"github.com/bornholm/indecis"
 )
 
@@ -59,6 +60,87 @@ func TestMasksTwoCategories(t *testing.T) {
 	got := Masks(text, []indecis.Span{whole}, nil, sensitive)
 	if len(got) != 1 || got[0].Sensitive != "BELIEF" {
 		t.Errorf("got %+v, want one mask flagged BELIEF", got)
+	}
+}
+
+// Masks that overlap are merged whatever their categories: the merged
+// mask carries the one it overlaps most, and is not joined over function
+// words to a neighbour of the other.
+func TestMasksOverlapTwoCategories(t *testing.T) {
+	text := "Il jeûne pendant le ramadan malgré son diabète et son asthme."
+	at := func(s, typ string) indecis.Span {
+		i := strings.Index(text, s)
+		return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ}
+	}
+	found := []indecis.Span{
+		at("jeûne pendant le ramadan", "QUASI"),
+		at("ramadan malgré son diabète", "QUASI"),
+		at("asthme", "QUASI"),
+	}
+	sensitive := []indecis.Span{at("jeûne pendant le ramadan", "BELIEF"), at("diabète", "HEALTH"), at("asthme", "HEALTH")}
+	var got []string
+	for _, m := range Masks(text, found, nil, sensitive) {
+		got = append(got, text[m.Start:m.End]+" "+m.Sensitive)
+	}
+	want := []string{"jeûne pendant le ramadan malgré son diabète BELIEF", "asthme HEALTH"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// Between two sensitive passages that overlap a mask as much, the more
+// confident wins, then the first in the text, whatever the order of the
+// model's list.
+func TestCategoryTie(t *testing.T) {
+	text := "suivi pour un asthme au temple"
+	at := func(s, typ string, conf float64) indecis.Span {
+		i := strings.Index(text, s)
+		return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ, Confidence: conf}
+	}
+	whole := Span{0, len(text)}
+	for _, c := range []struct {
+		sensitive []indecis.Span
+		want      string
+	}{
+		{[]indecis.Span{at("asthme", "HEALTH", 0.6), at("temple", "BELIEF", 0.9)}, "BELIEF"},
+		{[]indecis.Span{at("temple", "BELIEF", 0.9), at("asthme", "HEALTH", 0.6)}, "BELIEF"},
+		{[]indecis.Span{at("temple", "BELIEF", 0.7), at("asthme", "HEALTH", 0.7)}, "HEALTH"},
+		{[]indecis.Span{at("asthme", "HEALTH", 0.7), at("temple", "BELIEF", 0.7)}, "HEALTH"},
+	} {
+		if got := category(text, whole, c.sensitive); got != c.want {
+			t.Errorf("%v: got %q, want %q", c.sensitive, got, c.want)
+		}
+	}
+}
+
+// OnFound gives a refined mask its own category, and an entity a filter
+// adds the category of the sensitive passage it overlaps.
+func TestFoundCategories(t *testing.T) {
+	text := "Elle a une lombalgie chronique, voir le 06 12 34 56 78."
+	at := func(s, typ string) indecis.Span {
+		i := strings.Index(text, s)
+		return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ, Confidence: 1}
+	}
+	sensitive := []indecis.Span{at("lombalgie chronique", "HEALTH")}
+	phone := at("06 12 34 56 78", "CODE")
+	r := &Recognizer{known: map[string][]decided{
+		text: {{masks: append([]indecis.Span{at("une lombalgie chronique", "QUASI")}, sensitive...), sensitive: sensitive}},
+	}}
+	r.filters = []ner.EntityFilter{func(_ string, ents []ner.Entity) []ner.Entity {
+		return append(ents, ner.Entity{Text: phone.Text, Type: "PHONE", Start: phone.Start, End: phone.End})
+	}}
+	var got []string
+	r.OnFound = func(_ string, found []Found) {
+		for _, f := range found {
+			got = append(got, f.Text+" "+f.Sensitive)
+		}
+	}
+	if _, err := r.Recognize(text); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"une lombalgie chronique HEALTH", "06 12 34 56 78 "}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 

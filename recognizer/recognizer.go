@@ -57,7 +57,8 @@ type decided struct {
 // Found is an entity returned by Recognize, with the special category
 // (GDPR article 9 or 10) of the sensitive passage it covers, if any: one
 // category only, that of the passage it overlaps most, when it covers
-// several.
+// several. A refined mask keeps its own (Mask.Sensitive); an entity that
+// the filters added or reshaped takes it by the same rule (category).
 type Found struct {
 	ner.Entity
 	Sensitive string
@@ -160,12 +161,16 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 	}
 	found, sensitive = confident(found), confident(sensitive)
 	var out []ner.Entity
+	// cats holds the category of each refined mask, which the filters
+	// may leave as it is.
+	cats := map[Span]string{}
 	if r.Raw {
 		for _, s := range found {
 			out = append(out, ner.Entity{Text: s.Text, Type: ner.EntityType(s.Type), Start: s.Start, End: s.End, Confidence: s.Confidence})
 		}
 	} else {
 		for _, m := range Masks(text, found, typed, sensitive) {
+			cats[m.Span] = m.Sensitive
 			out = append(out, ner.Entity{Text: text[m.Start:m.End], Type: m.Type, Start: m.Start, End: m.End, Confidence: m.Confidence})
 		}
 	}
@@ -175,7 +180,11 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 	if r.OnFound != nil {
 		list := make([]Found, len(out))
 		for i, e := range out {
-			list[i] = Found{Entity: e, Sensitive: category(text, Span{e.Start, e.End}, sensitive)}
+			cat, ok := cats[Span{e.Start, e.End}]
+			if !ok {
+				cat = category(text, Span{e.Start, e.End}, sensitive)
+			}
+			list[i] = Found{Entity: e, Sensitive: cat}
 		}
 		r.OnFound(text, list)
 	}
@@ -205,18 +214,42 @@ func steadyPlaceholders(text string) string {
 // most, however little of s it covers, as long as the overlap holds a
 // word other than a function word: a mask that holds a special category
 // of data is sensitive as a whole. An overlap of function words alone
-// gives no category, so it does not keep Masks from joining s.
+// gives no category, so it does not keep Masks from joining s. Between
+// passages that overlap s as much, the more confident wins, then the
+// first in the text, then the first type in alphabetical order: the
+// category does not depend on the order of the model's list.
 func category(text string, s Span, sensitive []indecis.Span) string {
-	cat, best := "", 0
-	for _, t := range sensitive {
+	var best *indecis.Span
+	most := 0
+	for i, t := range sensitive {
 		// The model's offsets, which Raw keeps as they are, are not
 		// trusted to fall within text.
 		start, end := max(s.Start, t.Start, 0), min(s.End, t.End, len(text))
-		if o := end - start; o > best && informative(text[start:end]) {
-			cat, best = t.Type, o
+		o := end - start
+		if o <= 0 || o < most || !informative(text[start:end]) {
+			continue
 		}
+		if o == most && !better(t, *best) {
+			continue
+		}
+		best, most = &sensitive[i], o
 	}
-	return cat
+	if best == nil {
+		return ""
+	}
+	return best.Type
+}
+
+// better breaks a tie between two sensitive passages that overlap a mask
+// as much.
+func better(a, b indecis.Span) bool {
+	if a.Confidence != b.Confidence {
+		return a.Confidence > b.Confidence
+	}
+	if a.Start != b.Start {
+		return a.Start < b.Start
+	}
+	return a.Type < b.Type
 }
 
 // Mask is a refined mask, its type and its special category, if any.

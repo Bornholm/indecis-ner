@@ -200,17 +200,17 @@ What matters is how much personal data stays readable, not whether each passage 
 
 ### Special categories after refining
 
-A refined mask carries the special category of the sensitive passages it holds, for the adapter's users (`Found.Sensitive`, `Mask.Sensitive`): one that releases the masks of a type, for instance, keeps the sensitive ones. Joining used to lose it. "fréquente avec" and "ses enfants à la synagogue de Chalon" became one mask, and the sensitive passage "la synagogue de Chalon" (`BELIEF`) covered less than half of it, which then took no category, and the type of a place. Masks separated by function words are now joined only within the same category, none included, and a mask takes the category of the sensitive passage it overlaps most, however little of it, as long as the overlap holds a word other than a function word. Masks that overlap are still merged: the mask stays flagged, but carries one category only when it holds two, that of the passage it overlaps most.
+A refined mask carries the special category of the sensitive passages it holds, for the adapter's users (`Found.Sensitive`, `Mask.Sensitive`): one that releases the masks of a type, for instance, keeps the sensitive ones. Joining used to lose it. "fréquente avec" and "ses enfants à la synagogue de Chalon" became one mask, and the sensitive passage "la synagogue de Chalon" (`BELIEF`) covered less than half of it, which then took no category, and the type of a place. Masks separated by function words are now joined only within the same category, none included, and a mask takes the category of the sensitive passage it overlaps most, however little of it, as long as the overlap holds a word other than a function word. Masks that overlap are still merged: the mask stays flagged, but carries one category only when it holds two, that of the passage it overlaps most. Between passages that overlap it as much, the more confident wins, then the first in the text. `Found.Sensitive` is the mask's own category; an entity that go-anon's filters add, a phone number for instance, takes the category of the passage it overlaps by the same rule.
 
-`compare -refine`, with the `sensitive` question, reports, among the labeled sensitive passages masked, those whose mask carries a category: covered at least half by such masks. `runs/work-fam-p576`, int8, bias 6:
+`compare -refine`, with the `sensitive` question, reports, among the labeled sensitive passages masked, those whose mask is flagged, that is covered at least half by masks that carry a category, whatever it is, and those whose mask carries the labeled category. With `-json`, these counts are written under `categories`. `compare` keeps every passage of the model, as the recognizer at `MinConfidence` 0; `-minconfidence` drops the less confident ones, sensitive ones included. `runs/work-fam-p576`, int8, bias 6, built with `make build` (`GOEXPERIMENT=simd`: a build without it decodes a few passages otherwise):
 
-| Test set | Model's sensitive passages, before refining | Flagged, before | Flagged, now | Flagged masks over no labeled sensitive passage, before / now |
+| Test set | Model's sensitive passages, before refining | Flagged, before / now | With their category, before / now | Flagged masks over no labeled sensitive passage, before / now |
 | --- | --- | --- | --- | --- |
-| Prose, 98 docs | 91.1% | 56.2% | 95.3% | 91 / 261 |
-| Indirect prose, 56 docs | 84.1% | 60.3% | 86.6% | 35 / 109 |
-| Family test, 29 docs | 89.6% | 56.2% | 93.8% | 50 / 117 |
-| Targeted prose, 20 docs | 93.0% | 74.4% | 95.3% | 18 / 38 |
-| Unseen templates, 300 docs | 89.2% | 78.4% | 89.2% | 45 / 168 |
+| Prose, 98 docs | 91.1% | 56.2% / 95.3% | 56.2% / 93.5% | 91 / 261 |
+| Indirect prose, 56 docs | 84.1% | 60.3% / 86.6% | 55.2% / 76.3% | 35 / 109 |
+| Family test, 29 docs | 89.6% | 56.2% / 93.8% | 56.2% / 93.8% | 50 / 117 |
+| Targeted prose, 20 docs | 93.0% | 74.4% / 95.3% | 74.4% / 95.3% | 18 / 38 |
+| Unseen templates, 300 docs | 89.2% | 78.4% / 89.2% | 76.3% / 87.1% | 45 / 168 |
 
 - What is masked does not change: the leak and the masked characters are the same to the character, at bias 5 and 6.
 - Joining loses up to 35 points of the categories the model found. Without joining across categories but with the former rule (a category covering at least half of the mask), 72% to 82% are flagged.
