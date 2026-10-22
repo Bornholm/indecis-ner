@@ -38,6 +38,105 @@ func TestRefine(t *testing.T) {
 	}
 }
 
+// A mask that starts or ends on a space or a comma does not grow over
+// the word next to it (#2): only a mask cut inside a word grows. Spaces
+// at the edges are left out.
+func TestRefineEdges(t *testing.T) {
+	text := "Elle consulte pour son diabète, avant la prière du vendredi."
+	at := func(s string) Span {
+		i := strings.Index(text, s)
+		if i < 0 {
+			t.Fatalf("%q not in text", s)
+		}
+		return Span{i, i + len(s)}
+	}
+	for _, c := range []struct {
+		in   Span
+		want string
+	}{
+		{at(" avant la prière"), "avant la prière"},
+		{at("diabète, "), "diabète,"},
+		{at(", avant"), ", avant"},
+		{at("abète, av"), "diabète, avant"},
+		// A cut inside a word that holds a two-byte rune, "ièr", and a cut
+		// inside that rune, "è" being bytes 3 and 4 of "prière".
+		{Span{at("prière").Start + 2, at("prière").End - 1}, "prière"},
+		{Span{at("prière").Start + 4, at("prière").Start + 4 + 1}, "prière"},
+		{Span{at("prière").Start, at("prière").Start + 4}, "prière"},
+		{at("son diabète, avant"), "son diabète, avant"},
+	} {
+		got := Refine(text, []Span{c.in}, nil)
+		if len(got) != 1 || text[got[0].Start:got[0].End] != c.want {
+			t.Errorf("%q: got %v, want %q", text[c.in.Start:c.in.End], got, c.want)
+		}
+	}
+	// An empty mask, even inside a word or a rune, cuts none and is
+	// dropped.
+	for _, i := range []int{at("prière").Start + 2, at("prière").Start + 4} {
+		if got := Refine(text, []Span{{i, i}}, nil); len(got) != 0 {
+			t.Errorf("empty mask at %d: got %v, want none", i, got)
+		}
+	}
+	// A sign between two letters or digits at the edge cuts a word or a
+	// number; a sign before a space does not.
+	text = "Des rendez-vous à l'hôpital, né le 12/03/1980, 1,75 m."
+	for _, c := range []struct {
+		in   Span
+		want string
+	}{
+		{at("Des rendez-"), "Des rendez-vous"},
+		{at("-vous à"), "rendez-vous à"},
+		{at("'hôpital"), "l'hôpital"},
+		{at("/03/1980"), "12/03/1980"},
+		{at("12/03/"), "12/03/1980"},
+		// Past the edge, the mask grows over the signs between letters or
+		// digits too.
+		{at("/1980"), "12/03/1980"},
+		{at("12/03"), "12/03/1980"},
+		{at("vous"), "rendez-vous"},
+		{at("l'"), "l'hôpital"},
+		{at(",75 m"), "1,75 m"},
+		{at("hôpital, "), "l'hôpital,"},
+	} {
+		got := Refine(text, []Span{c.in}, nil)
+		if len(got) != 1 || text[got[0].Start:got[0].End] != c.want {
+			t.Errorf("%q: got %v, want %q", text[c.in.Start:c.in.End], got, c.want)
+		}
+	}
+}
+
+// The example of #2: a mask that starts on a space no longer takes the
+// sensitive word before it, which keeps its own category.
+func TestMasksLeadingSpace(t *testing.T) {
+	text := "Elle consulte pour son diabète avant la prière du vendredi."
+	at := func(s, typ string) indecis.Span {
+		i := strings.Index(text, s)
+		return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ}
+	}
+	diabetes := at("diabète", "HEALTH")
+	found := []indecis.Span{diabetes, at(" avant la prière du vendredi", "QUASI")}
+	sensitive := []indecis.Span{diabetes, at("prière du vendredi", "BELIEF")}
+	var got []string
+	for _, m := range Masks(text, found, nil, sensitive) {
+		got = append(got, text[m.Start:m.End]+" "+m.Sensitive)
+	}
+	want := []string{"diabète HEALTH", "avant la prière du vendredi BELIEF"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	// Two masks that share the space between them: without it, they no
+	// longer overlap, and join keeps them apart.
+	shared := diabetes
+	shared.End++
+	got = nil
+	for _, m := range Masks(text, []indecis.Span{shared, found[1]}, nil, []indecis.Span{shared, sensitive[1]}) {
+		got = append(got, text[m.Start:m.End]+" "+m.Sensitive)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("shared space: got %q, want %q", got, want)
+	}
+}
+
 func TestSteadyPlaceholders(t *testing.T) {
 	in := "Bonjour ⟦PERSON_1_c471b2⟧, voir ⟦CODE_12_0a9f⟧ et ⟦x⟧."
 	got := steadyPlaceholders(in)
@@ -88,17 +187,38 @@ func TestMasksOverlapTwoCategories(t *testing.T) {
 	}
 }
 
-// Masks that touch, without a character in between, are joined as masks
-// separated by function words: only within one category. They touch once
-// grown to whole words: here, over the comma that ends the first one.
-func TestMasksTouching(t *testing.T) {
-	text := "Elle consulte pour son diabète, avant la prière du vendredi."
+// A mask grown over a sign between two words takes the word of another
+// mask: the two overlap and are merged whatever their categories, the
+// loss of #2 that remains at such a sign.
+func TestMasksJoiningSign(t *testing.T) {
+	text := "Il a des rendez-vous médicaux le vendredi."
 	at := func(s, typ string) indecis.Span {
 		i := strings.Index(text, s)
 		return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ}
 	}
-	diabetes, prayer := at("diabète", "HEALTH"), at(" avant la prière du vendredi", "QUASI")
-	diabetes.End++ // the comma
+	found := []indecis.Span{at("rendez-", "QUASI"), at("vous médicaux", "QUASI")}
+	sensitive := []indecis.Span{at("rendez-", "BELIEF"), at("vous médicaux", "HEALTH")}
+	var got []string
+	for _, m := range Masks(text, found, nil, sensitive) {
+		got = append(got, text[m.Start:m.End]+" "+m.Sensitive)
+	}
+	want := []string{"rendez-vous médicaux HEALTH"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// Masks that touch, without a character in between, are joined as masks
+// separated by function words: only within one category. They touch once
+// refined: here, over the parentheses, which join no word.
+func TestMasksTouching(t *testing.T) {
+	text := "Elle consulte pour (son diabète)(prière du vendredi)."
+	at := func(s, typ string) indecis.Span {
+		i := strings.Index(text, s)
+		return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ}
+	}
+	diabetes, prayer := at("diabète", "HEALTH"), at("(prière du vendredi)", "QUASI")
+	diabetes.End++ // the parenthesis
 	found := []indecis.Span{diabetes, prayer}
 	if diabetes.End != prayer.Start {
 		t.Fatal("the masks do not touch")
@@ -107,8 +227,8 @@ func TestMasksTouching(t *testing.T) {
 		sensitive []indecis.Span
 		want      []string
 	}{
-		{[]indecis.Span{diabetes, at("prière du vendredi", "BELIEF")}, []string{"diabète, HEALTH", " avant la prière du vendredi BELIEF"}},
-		{[]indecis.Span{diabetes, at("prière du vendredi", "HEALTH")}, []string{"diabète, avant la prière du vendredi HEALTH"}},
+		{[]indecis.Span{diabetes, at("prière du vendredi", "BELIEF")}, []string{"diabète) HEALTH", "(prière du vendredi) BELIEF"}},
+		{[]indecis.Span{diabetes, at("prière du vendredi", "HEALTH")}, []string{"diabète)(prière du vendredi) HEALTH"}},
 	} {
 		var got []string
 		for _, m := range Masks(text, found, nil, c.sensitive) {
