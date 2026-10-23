@@ -67,7 +67,7 @@ func main() {
 	merge := flag.Bool("merge", false, "score passages whatever their type: masked or not")
 	novelFlag := flag.String("novel", "", "lexicon of the training set (cmd/lexicon): score only the labeled passages none of whose words the training set had in their category; found passages over the others are ignored")
 	bias := flag.Float64("bias", 0, "indecis decoding bias towards passages (indecis.WithSpanBias)")
-	minConfidence := flag.Float64("minconfidence", 0, "drop the indecis passages less confident, sensitive ones included, as the recognizer's MinConfidence")
+	minConfidence := flag.Float64("minconfidence", 0, "drop the indecis passages less confident, sensitive and typed ones included, as the recognizer's MinConfidence")
 	jsonOut := flag.String("json", "", "write the scores as JSON to this file")
 	showErrors := flag.Int("errors", 0, "print this many errors per engine")
 	showLeaks := flag.Int("leaks", 0, "print this many labeled passages left partly or fully unmasked")

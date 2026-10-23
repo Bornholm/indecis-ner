@@ -262,7 +262,9 @@ type Mask struct {
 // (split), types each mask from the typed passages of the entities
 // question and gives it the special category of the sensitive passages:
 // a piece cut from a mask has its own type and category, none if it
-// overlaps no sensitive passage. Masks of a name or
+// overlaps no sensitive passage. The caller drops the passages it does
+// not trust, typed ones included, before: Recognizer does so with
+// MinConfidence. Masks of a name or
 // an identifier are not joined to their neighbours over function words,
 // nor to those they touch:
 // go-anon gives each name its own consistent placeholder. Nor are masks of
@@ -311,7 +313,8 @@ func split(text string, m Span, typed []indecis.Span) []Span {
 		if t.Type != "PERSON" && t.Type != "CODE" {
 			continue
 		}
-		// A passage the mask only clips belongs to a neighbouring mask.
+		// A passage the mask only clips, half of it or less, belongs to a
+		// neighbouring mask.
 		s := Span{max(t.Start, m.Start), min(t.End, m.End)}
 		if 2*(s.End-s.Start) <= t.End-t.Start {
 			continue
@@ -349,14 +352,15 @@ func split(text string, m Span, typed []indecis.Span) []Span {
 		return []Span{m}
 	}
 	// The pieces between and after the names lose the function words at
-	// their end too; a name keeps them, as "Le" in "Jean Le".
+	// their end too, and are dropped if nothing else is left; a name keeps
+	// them, and is kept whatever it holds, as "Le" in "Jean Le".
 	var out []Span
 	add := func(p Span, name bool) {
 		p = trim(text, p)
 		if !name {
 			p = trimFiller(text, p)
 		}
-		if p.Start < p.End && informative(text[p.Start:p.End]) {
+		if p.Start < p.End && (name || informative(text[p.Start:p.End])) {
 			out = append(out, p)
 		}
 	}
@@ -374,9 +378,18 @@ func split(text string, m Span, typed []indecis.Span) []Span {
 }
 
 // oneWord reports whether the gap between two typed passages leaves them
-// one name or one identifier: spaces only, or signs without a space.
+// one name or one identifier: spaces on one line only, or the signs that
+// join the parts of an identifier ("nadia.ferrand@laposte.net",
+// "Roussel-Martin"). A comma, a slash or a line between them separates
+// two: "Roussel,Martin", "06 42 18 77 05/06 12 34 56 78".
 func oneWord(gap string) bool {
-	return strings.TrimSpace(gap) == "" || !strings.ContainsFunc(gap, unicode.IsSpace)
+	if strings.ContainsAny(gap, "\n\r") {
+		return false
+	}
+	if strings.TrimSpace(gap) == "" {
+		return true
+	}
+	return strings.Trim(gap, ".@-_") == ""
 }
 
 // skipFiller returns where the first word other than a function word
@@ -405,8 +418,8 @@ func skipFiller(text string, from, to int) int {
 }
 
 // civility returns where the civility of the name at to starts: at most
-// two titles right before it, separated by spaces, each with or without
-// its full stop ("M. Paul Martin", "Mme Dr Weiss"), not before from.
+// two titles right before it, separated by spaces, each abbreviation
+// with or without its full stop ("M. Paul Martin", "Mme Dr Weiss"), not before from.
 func civility(text string, from, to int) int {
 	start := to
 	for range 2 {
@@ -418,8 +431,10 @@ func civility(text string, from, to int) int {
 			}
 			i -= size
 		}
+		dot := false
 		if r, size := utf8.DecodeLastRuneInString(text[:i]); i > from && r == '.' {
 			i -= size
+			dot = true
 		}
 		j := i
 		for j > from {
@@ -429,7 +444,9 @@ func civility(text string, from, to int) int {
 			}
 			j -= size
 		}
-		if j == i || !titles[strings.ToLower(text[j:i])] {
+		// A title before a full stop is an abbreviation ("M.", "Dr."): a
+		// whole word before one ends a sentence ("le docteur. M. Paul").
+		if j == i || !titles[strings.ToLower(text[j:i])] || dot && utf8.RuneCountInString(text[j:i]) > 4 {
 			break
 		}
 		start = j
