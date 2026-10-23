@@ -433,6 +433,44 @@ func TestMasksTouchingBrackets(t *testing.T) {
 	}
 }
 
+// Across a comma, masks of different types are kept apart: an
+// organisation and its address, a post and its service. Masks of one
+// type, or of no type, are joined, and so are masks of different types
+// across function words alone.
+func TestMasksListedTypes(t *testing.T) {
+	text := "Établissement : Clinique du Val de Saône, 14 rue des Tanneurs, 71100 Chalon-sur-Saône. " +
+		"Poste : infirmière de nuit, service de pneumologie. Il est magasinier sur le site de Stains, dans l'entrepôt, en équipe."
+	at := func(s, typ string) indecis.Span {
+		i := strings.Index(text, s)
+		if i < 0 {
+			t.Fatalf("%q not in text", s)
+		}
+		return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ}
+	}
+	found := []indecis.Span{
+		at("Clinique du Val de Saône", "QUASI"), at("14 rue des Tanneurs", "QUASI"), at("71100 Chalon-sur-Saône", "QUASI"),
+		at("infirmière de nuit", "QUASI"), at("service de pneumologie", "QUASI"),
+		at("magasinier", "QUASI"), at("site de Stains", "QUASI"), at("entrepôt", "QUASI"),
+	}
+	typed := []indecis.Span{
+		at("Clinique du Val de Saône", "ORG"), at("14 rue des Tanneurs", "LOC"), at("71100 Chalon-sur-Saône", "LOC"),
+		at("infirmière de nuit", "DEM"), at("service de pneumologie", "ORG"),
+		at("magasinier", "DEM"), at("site de Stains", "LOC"),
+	}
+	var got []string
+	for _, m := range Masks(text, found, typed, nil) {
+		got = append(got, text[m.Start:m.End]+" "+string(m.Type))
+	}
+	want := []string{
+		"Clinique du Val de Saône ORG", "14 rue des Tanneurs, 71100 Chalon-sur-Saône LOC",
+		"infirmière de nuit DEM", "service de pneumologie ORG",
+		"magasinier sur le site de Stains, dans l'entrepôt LOC",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 // A semicolon, a colon or an ellipsis is left out of a mask's edge, and
 // keeps two masks apart; a comma is left out too, but joins them.
 func TestRefinePunctuationJoin(t *testing.T) {

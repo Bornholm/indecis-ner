@@ -264,11 +264,11 @@ type Mask struct {
 // a piece cut from a mask has its own type and category, none if it
 // overlaps no sensitive passage. The caller drops the passages it does
 // not trust, typed ones included, before: Recognizer does so with
-// MinConfidence. Masks of a name or
-// an identifier are not joined to their neighbours over function words,
-// nor to those they touch:
-// go-anon gives each name its own consistent placeholder. Nor are masks of
-// different special categories, or a sensitive mask and one that is not.
+// MinConfidence. Masks of a name or an identifier are not joined to
+// their neighbours over function words, nor to those they touch: go-anon
+// gives each name its own consistent placeholder. Nor are masks of
+// different special categories, or a sensitive mask and one that is not,
+// nor masks of different types across a comma.
 // Masks that overlap are merged whatever they hold: a mask that holds a
 // sensitive passage stays flagged, but with one category only, that of
 // the passage it overlaps most. That category is the merged mask's own:
@@ -280,12 +280,24 @@ func Masks(text string, found, typed, sensitive []indecis.Span) []Mask {
 	for i, s := range found {
 		spans[i] = Span{s.Start, s.End}
 	}
-	own := func(s Span) bool {
+	kind := func(s Span) ner.EntityType {
 		t, _ := typeOf(s, typed, nil)
+		return t
+	}
+	own := func(s Span) bool {
+		t := kind(s)
 		return t == "PERSON" || t == "CODE"
 	}
+	// Across a comma, two masks of different types are two items of a
+	// list, not one description: "Clinique du Val de Saône, 14 rue des
+	// Tanneurs" is an organisation and an address. A mask of no type
+	// joins any.
+	listed := func(a, b Span) bool {
+		ta, tb := kind(a), kind(b)
+		return ta != tb && ta != "MISC" && tb != "MISC" && strings.Contains(text[a.End:b.Start], ",")
+	}
 	join := func(a, b Span) bool {
-		return !own(a) && !own(b) && category(text, a, sensitive) == category(text, b, sensitive)
+		return !own(a) && !own(b) && !listed(a, b) && category(text, a, sensitive) == category(text, b, sensitive)
 	}
 	var out []Mask
 	for _, m := range Refine(text, spans, join) {
