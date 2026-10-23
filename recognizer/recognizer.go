@@ -280,24 +280,26 @@ func Masks(text string, found, typed, sensitive []indecis.Span) []Mask {
 	for i, s := range found {
 		spans[i] = Span{s.Start, s.End}
 	}
-	kind := func(s Span) ner.EntityType {
+	name := func(s Span) bool {
 		t, _ := typeOf(s, typed, nil)
-		return t
-	}
-	own := func(s Span) bool {
-		t := kind(s)
 		return t == "PERSON" || t == "CODE"
 	}
 	// Across a comma, two masks of different types are two items of a
 	// list, not one description: "Clinique du Val de Saône, 14 rue des
-	// Tanneurs" is an organisation and an address. A mask of no type
-	// joins any.
+	// Tanneurs" is an organisation and an address. The types compared are
+	// those of the items on either side of the comma (itemType), not of the
+	// whole masks: the left one may already hold a description of other
+	// types. An item of no type joins any, and the mask it joins keeps its
+	// type.
 	listed := func(a, b Span) bool {
-		ta, tb := kind(a), kind(b)
-		return ta != tb && ta != "MISC" && tb != "MISC" && strings.Contains(text[a.End:b.Start], ",")
+		if !strings.Contains(text[a.End:b.Start], ",") {
+			return false
+		}
+		ta, tb := itemType(text, a, typed, false), itemType(text, b, typed, true)
+		return ta != tb && ta != "MISC" && tb != "MISC"
 	}
 	join := func(a, b Span) bool {
-		return !own(a) && !own(b) && !listed(a, b) && category(text, a, sensitive) == category(text, b, sensitive)
+		return !name(a) && !name(b) && !listed(a, b) && category(text, a, sensitive) == category(text, b, sensitive)
 	}
 	var out []Mask
 	for _, m := range Refine(text, spans, join) {
@@ -505,6 +507,33 @@ func trimFiller(text string, s Span) Span {
 		s = trim(text, Span{s.Start, i})
 	}
 	return s
+}
+
+// itemType returns the type of the typed passage at the start of s (or
+// at its end): the one that starts first (ends last) in s, MISC if there
+// is none, or if words other than function words lie between it and the
+// edge, which belong to no typed passage.
+func itemType(text string, s Span, typed []indecis.Span, start bool) ner.EntityType {
+	var best *indecis.Span
+	for i, t := range typed {
+		if t.Start >= s.End || s.Start >= t.End {
+			continue
+		}
+		if best == nil || start && t.Start < best.Start || !start && t.End > best.End {
+			best = &typed[i]
+		}
+	}
+	if best == nil {
+		return "MISC"
+	}
+	gap := text[min(best.End, s.End):s.End]
+	if start {
+		gap = text[s.Start:max(best.Start, s.Start)]
+	}
+	if informative(gap) {
+		return "MISC"
+	}
+	return ner.EntityType(best.Type)
 }
 
 // typeOf names a mask after the typed passage it overlaps most, MISC if

@@ -471,6 +471,63 @@ func TestMasksListedTypes(t *testing.T) {
 	}
 }
 
+// The types compared across a comma are those of the items next to it.
+func TestMasksListedShapes(t *testing.T) {
+	type typedSpan struct{ text, typ string }
+	cases := []struct {
+		name, text string
+		found      []string
+		typed      []typedSpan
+		want       []string
+	}{
+		{"an item typed MISC joins",
+			"Clinique du Val de Saône, entrepôt nord.", []string{"Clinique du Val de Saône", "entrepôt nord"},
+			[]typedSpan{{"Clinique du Val de Saône", "ORG"}, {"entrepôt nord", "MISC"}},
+			[]string{"Clinique du Val de Saône, entrepôt nord ORG"}},
+		{"a comma and function words",
+			"Clinique du Val de Saône, dans le quartier Saint-Jean.", []string{"Clinique du Val de Saône", "quartier Saint-Jean"},
+			[]typedSpan{{"Clinique du Val de Saône", "ORG"}, {"quartier Saint-Jean", "LOC"}},
+			[]string{"Clinique du Val de Saône ORG", "quartier Saint-Jean LOC"}},
+		// The left mask is typed after its description, DEM; the item
+		// before the comma is an organisation, as the one after it.
+		{"a description before the comma",
+			"Infirmière de nuit en réanimation à l'hôpital Nord, service de pneumologie.",
+			[]string{"Infirmière de nuit en réanimation", "hôpital Nord", "service de pneumologie"},
+			[]typedSpan{{"Infirmière de nuit en réanimation", "DEM"}, {"hôpital Nord", "ORG"}, {"service de pneumologie", "ORG"}},
+			[]string{"Infirmière de nuit en réanimation à l'hôpital Nord, service de pneumologie DEM"}},
+		{"another type before the comma",
+			"Infirmière de nuit en réanimation à l'hôpital Nord, 14 rue des Tanneurs.",
+			[]string{"Infirmière de nuit en réanimation", "hôpital Nord", "14 rue des Tanneurs"},
+			[]typedSpan{{"Infirmière de nuit en réanimation", "DEM"}, {"hôpital Nord", "ORG"}, {"14 rue des Tanneurs", "LOC"}},
+			[]string{"Infirmière de nuit en réanimation à l'hôpital Nord DEM", "14 rue des Tanneurs LOC"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			at := func(s, typ string) indecis.Span {
+				i := strings.Index(c.text, s)
+				if i < 0 {
+					t.Fatalf("%q not in text", s)
+				}
+				return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ}
+			}
+			var found, typed []indecis.Span
+			for _, f := range c.found {
+				found = append(found, at(f, "QUASI"))
+			}
+			for _, ts := range c.typed {
+				typed = append(typed, at(ts.text, ts.typ))
+			}
+			var got []string
+			for _, m := range Masks(c.text, found, typed, nil) {
+				got = append(got, c.text[m.Start:m.End]+" "+string(m.Type))
+			}
+			if !slices.Equal(got, c.want) {
+				t.Errorf("got %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
 // A semicolon, a colon or an ellipsis is left out of a mask's edge, and
 // keeps two masks apart; a comma is left out too, but joins them.
 func TestRefinePunctuationJoin(t *testing.T) {
