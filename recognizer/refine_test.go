@@ -107,6 +107,26 @@ func TestRefineEdges(t *testing.T) {
 			t.Errorf("%q: got %v, want %q", text[c.in.Start:c.in.End], got, c.want)
 		}
 	}
+	// A bracket at an edge is paired by depth: the partner of another
+	// pair in the mask does not keep it.
+	text = "Voir (annexe 2) (pièce jointe) et « dossier (suite) »."
+	for _, c := range []struct {
+		in   Span
+		want string
+	}{
+		{at("(annexe 2) ("), "(annexe 2)"},
+		{at(") (pièce jointe)"), "(pièce jointe)"},
+		{at("(annexe 2) (pièce jointe)"), "(annexe 2) (pièce jointe)"},
+		{at("2) (pièce jointe)"), "2) (pièce jointe)"},
+		{at("« dossier (suite)"), "dossier (suite)"},
+		{at("« dossier (suite) »"), "« dossier (suite) »"},
+		{at("(suite) »"), "(suite)"},
+	} {
+		got := Refine(text, []Span{c.in}, nil)
+		if len(got) != 1 || text[got[0].Start:got[0].End] != c.want {
+			t.Errorf("%q: got %v, want %q", text[c.in.Start:c.in.End], got, c.want)
+		}
+	}
 }
 
 // The example of #2: a mask that starts on a space no longer takes the

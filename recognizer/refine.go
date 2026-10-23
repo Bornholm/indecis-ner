@@ -1,6 +1,7 @@
 package recognizer
 
 import (
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -98,24 +99,32 @@ func Refine(text string, spans []Span, join func(a, b Span) bool) []Span {
 // mask's edges: two masks that shared the space between them would
 // overlap, and be merged whatever join says, and the full stop after a
 // number is not part of it. Other signs stay masked, as the % of "80 %".
-// So is a bracket whose partner is outside the mask: "(1 245,60 €)"
-// masked as "1 245,60 €)" leaves "(" readable, and then ")".
+// So is a bracket that is not closed, or opened, inside the mask:
+// "(1 245,60 €)" masked as "1 245,60 €)" leaves "(" readable, and then
+// ")"; "(annexe 2) (" leaves the last "(" readable.
 func trim(text string, s Span) Span {
-	for s.Start < s.End {
-		r, size := utf8.DecodeRuneInString(text[s.Start:])
-		if !edge(r) && !unpaired(text[s.Start:s.End], r) {
-			break
+	// Leaving a bracket out may leave its partner unpaired, at the other
+	// edge: trim until nothing moves.
+	for {
+		before := s
+		for s.Start < s.End {
+			r, size := utf8.DecodeRuneInString(text[s.Start:])
+			if !edge(r) && !unpaired(text[s.Start:s.End], r, true) {
+				break
+			}
+			s.Start += size
 		}
-		s.Start += size
-	}
-	for s.Start < s.End {
-		r, size := utf8.DecodeLastRuneInString(text[s.Start:s.End])
-		if !edge(r) && !unpaired(text[s.Start:s.End], r) {
-			break
+		for s.Start < s.End {
+			r, size := utf8.DecodeLastRuneInString(text[s.Start:s.End])
+			if !edge(r) && !unpaired(text[s.Start:s.End], r, false) {
+				break
+			}
+			s.End -= size
 		}
-		s.End -= size
+		if s == before {
+			return s
+		}
 	}
-	return s
 }
 
 func isWordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
@@ -124,13 +133,43 @@ func isWordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) 
 // the punctuation of sentences.
 func edge(r rune) bool { return unicode.IsSpace(r) || strings.ContainsRune(".,;:!?…", r) }
 
-// pairs maps each bracket to its partner.
-var pairs = map[rune]rune{'(': ')', ')': '(', '[': ']', ']': '[', '«': '»', '»': '«'}
+// closing maps each opening bracket to its partner, opening each
+// closing one to its partner.
+var (
+	closing = map[rune]rune{'(': ')', '[': ']', '«': '»'}
+	opening = map[rune]rune{')': '(', ']': '[', '»': '«'}
+)
 
-// unpaired reports whether r is a bracket whose partner is not in mask.
-func unpaired(mask string, r rune) bool {
-	p, ok := pairs[r]
-	return ok && !strings.ContainsRune(mask, p)
+// unpaired reports whether r, a bracket at the start of mask (or at its
+// end), is not closed (opened) inside it: counted by depth, so the ")" of
+// another pair does not close the "(" of "(annexe 2) (".
+func unpaired(mask string, r rune, start bool) bool {
+	if partner, ok := closing[r]; ok {
+		return !start || !closed([]rune(mask), r, partner)
+	}
+	if partner, ok := opening[r]; ok {
+		rs := []rune(mask)
+		slices.Reverse(rs)
+		return start || !closed(rs, r, partner)
+	}
+	return false
+}
+
+// closed reports whether the bracket r that starts rs finds its partner
+// in them.
+func closed(rs []rune, r, partner rune) bool {
+	depth := 0
+	for _, x := range rs {
+		switch x {
+		case r:
+			depth++
+		case partner:
+			if depth--; depth == 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // joins reports whether the rune at i in text is a sign between two
