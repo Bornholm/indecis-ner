@@ -303,12 +303,17 @@ func Masks(text string, found, typed, sensitive []indecis.Span) []Mask {
 // replace by one placeholder. What comes before the first stays with it
 // ("Mme Carmen Roussel"); between two of them, the punctuation and
 // function words that follow the first are left readable, a civility of
-// one or two words goes with the next ("et M. Paul Martin") and the rest
-// is a mask of its own ("présidente"), as is what follows the last.
+// one or two titles goes with the next ("et M. Paul Martin") and the
+// rest is a mask of its own ("présidente"), as is what follows the last,
+// past its function words.
 // The pieces only lose their edges (trim): grown, they could take the
 // sign between two names, and the name after it, back into one mask.
 func split(text string, m Span, typed []indecis.Span) []Span {
-	var in []Span
+	type own struct {
+		Span
+		typ string
+	}
+	var in []own
 	for _, t := range typed {
 		if t.Type != "PERSON" && t.Type != "CODE" {
 			continue
@@ -334,15 +339,16 @@ func split(text string, m Span, typed []indecis.Span) []Span {
 			}
 			s.End += size
 		}
-		in = append(in, s)
+		in = append(in, own{s, string(t.Type)})
 	}
-	slices.SortFunc(in, func(a, b Span) int { return a.Start - b.Start })
-	// Passages that overlap, touch, or are separated by spaces only
-	// ("Carmen" and "Roussel") or by signs without a space
-	// ("nadia.ferrand" and "@laposte.net") are one name or one identifier.
-	var owns []Span
+	slices.SortFunc(in, func(a, b own) int { return a.Start - b.Start })
+	// Passages that overlap, touch, or are separated by the signs of an
+	// identifier ("nadia.ferrand" and "@laposte.net") are one name or one
+	// identifier; separated by spaces only, when of one type ("Carmen" and
+	// "Roussel", not "Paul Martin" and "06 42 18 77 05").
+	var owns []own
 	for _, s := range in {
-		if n := len(owns); n > 0 && (s.Start <= owns[n-1].End || oneWord(text[owns[n-1].End:s.Start])) {
+		if n := len(owns); n > 0 && (s.Start <= owns[n-1].End || oneWord(text[owns[n-1].End:s.Start], s.typ == owns[n-1].typ)) {
 			owns[n-1].End = max(owns[n-1].End, s.End)
 			continue
 		}
@@ -373,21 +379,22 @@ func split(text string, m Span, typed []indecis.Span) []Span {
 	}
 	last := owns[len(owns)-1].End
 	add(Span{start, last}, true)
-	add(Span{last, m.End}, false)
+	add(Span{skipFiller(text, last, m.End), m.End}, false)
 	return out
 }
 
 // oneWord reports whether the gap between two typed passages leaves them
-// one name or one identifier: spaces on one line only, or the signs that
-// join the parts of an identifier ("nadia.ferrand@laposte.net",
-// "Roussel-Martin"). A comma, a slash or a line between them separates
-// two: "Roussel,Martin", "06 42 18 77 05/06 12 34 56 78".
-func oneWord(gap string) bool {
+// one name or one identifier: spaces on one line only, between passages
+// of one type (same), or the signs that join the parts of an identifier
+// ("nadia.ferrand@laposte.net", "Roussel-Martin"). A comma, a slash or a
+// line between them separates two: "Roussel,Martin", "06 42 18 77
+// 05/06 12 34 56 78".
+func oneWord(gap string, same bool) bool {
 	if strings.ContainsAny(gap, "\n\r") {
 		return false
 	}
 	if strings.TrimSpace(gap) == "" {
-		return true
+		return same
 	}
 	return strings.Trim(gap, ".@-_") == ""
 }
@@ -446,7 +453,12 @@ func civility(text string, from, to int) int {
 		}
 		// A title before a full stop is an abbreviation ("M.", "Dr."): a
 		// whole word before one ends a sentence ("le docteur. M. Paul").
-		if j == i || !titles[strings.ToLower(text[j:i])] || dot && utf8.RuneCountInString(text[j:i]) > 4 {
+		// One of one or two letters is written with a capital: "m." ends
+		// "1,75 m.".
+		w := text[j:i]
+		first, _ := utf8.DecodeRuneInString(w)
+		n := utf8.RuneCountInString(w)
+		if j == i || !titles[strings.ToLower(w)] || dot && n > 4 || n <= 2 && !unicode.IsUpper(first) {
 			break
 		}
 		start = j

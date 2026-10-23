@@ -206,7 +206,7 @@ func informative(s string) bool {
 // commas, apostrophes and at most two function words: what separates the
 // parts of one description, not two sentences.
 func filler(s string) bool {
-	if strings.ContainsAny(s, "\n.!?;:()«»\"") || len(s) > 24 {
+	if strings.ContainsAny(s, "\n.!?;:…()«»\"") || len(s) > 24 {
 		return false
 	}
 	ws := words(s)

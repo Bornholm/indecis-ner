@@ -334,6 +334,20 @@ func TestMasksSplitShapes(t *testing.T) {
 			"Mme Roux a vu le docteur. M. Paul Martin.", "Mme Roux a vu le docteur. M. Paul Martin",
 			[]typedSpan{{"Roux", "PERSON"}, {"Paul Martin", "PERSON"}},
 			[]string{"Mme Roux PERSON", "vu le docteur MISC", "M. Paul Martin PERSON"}},
+		{"function words after the last name",
+			"Mme Roussel et M. Martin et le service de nuit.", "Mme Roussel et M. Martin et le service de nuit",
+			[]typedSpan{{"Roussel", "PERSON"}, {"Martin", "PERSON"}},
+			[]string{"Mme Roussel PERSON", "M. Martin PERSON", "service de nuit MISC"}},
+		// A one-letter title is written with a capital: "m." ends a
+		// measure.
+		{"a unit before a full stop",
+			"Mme Roux mesure 1,75 m. Paul Martin.", "Mme Roux mesure 1,75 m. Paul Martin",
+			[]typedSpan{{"Roux", "PERSON"}, {"Paul Martin", "PERSON"}},
+			[]string{"Mme Roux PERSON", "mesure 1,75 m MISC", "Paul Martin PERSON"}},
+		{"a name and a number separated by a space",
+			"Joindre M. Paul Martin 06 42 18 77 05.", "M. Paul Martin 06 42 18 77 05",
+			[]typedSpan{{"Paul Martin", "PERSON"}, {"06 42 18 77 05", "CODE"}},
+			[]string{"M. Paul Martin PERSON", "06 42 18 77 05 CODE"}},
 		// A name keeps a last word that is a function word, and is kept
 		// when it holds nothing else.
 		{"a name made of a function word",
@@ -370,21 +384,72 @@ func TestMasksSplitShapes(t *testing.T) {
 	}
 }
 
-// A semicolon or a colon is left out of a mask's edge, and keeps two
-// masks apart; a comma is left out too, but joins them.
+// Each piece of a cut mask takes the category of the sensitive passage
+// it overlaps, none if it overlaps none.
+func TestMasksSplitSensitive(t *testing.T) {
+	text := "Mme Roussel, diabétique, et M. Paul Martin sont venus."
+	at := func(s, typ string) indecis.Span {
+		i := strings.Index(text, s)
+		return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ}
+	}
+	found := []indecis.Span{at("Mme Roussel, diabétique, et M. Paul Martin", "DIRECT")}
+	typed := []indecis.Span{at("Roussel", "PERSON"), at("Paul Martin", "PERSON")}
+	sensitive := []indecis.Span{at("diabétique", "HEALTH")}
+	var got []string
+	for _, m := range Masks(text, found, typed, sensitive) {
+		got = append(got, text[m.Start:m.End]+" "+m.Sensitive)
+	}
+	want := []string{"Mme Roussel ", "diabétique HEALTH", "M. Paul Martin "}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// Masks between brackets that touch keep their brackets, each pair
+// being whole: they still touch, and are joined within one category
+// only, as other masks that touch.
+func TestMasksTouchingBrackets(t *testing.T) {
+	text := "Elle consulte (son diabète)(prière du vendredi)."
+	at := func(s, typ string) indecis.Span {
+		i := strings.Index(text, s)
+		return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ}
+	}
+	found := []indecis.Span{at("(son diabète)", "QUASI"), at("(prière du vendredi)", "QUASI")}
+	for _, c := range []struct {
+		prayer string
+		want   []string
+	}{
+		{"BELIEF", []string{"(son diabète) HEALTH", "(prière du vendredi) BELIEF"}},
+		{"HEALTH", []string{"(son diabète)(prière du vendredi) HEALTH"}},
+	} {
+		sensitive := []indecis.Span{at("diabète", "HEALTH"), at("prière du vendredi", c.prayer)}
+		var got []string
+		for _, m := range Masks(text, found, nil, sensitive) {
+			got = append(got, text[m.Start:m.End]+" "+m.Sensitive)
+		}
+		if !slices.Equal(got, c.want) {
+			t.Errorf("got %q, want %q", got, c.want)
+		}
+	}
+}
+
+// A semicolon, a colon or an ellipsis is left out of a mask's edge, and
+// keeps two masks apart; a comma is left out too, but joins them.
 func TestRefinePunctuationJoin(t *testing.T) {
-	text := "Il a du diabète; asthme aussi. Il a du diabète, asthme aussi."
+	text := "Il a du diabète; asthme aussi. Il a du diabète, asthme aussi. Il a du diabète… et asthme."
 	semi := strings.Index(text, "diabète;")
 	comma := strings.LastIndex(text, "diabète,")
+	dots := strings.LastIndex(text, "diabète…")
 	spans := []Span{
 		{semi, semi + len("diabète;")}, {semi + len("diabète; "), semi + len("diabète; asthme")},
 		{comma, comma + len("diabète,")}, {comma + len("diabète, "), comma + len("diabète, asthme")},
+		{dots, dots + len("diabète…")}, {dots + len("diabète… et "), dots + len("diabète… et asthme")},
 	}
 	var got []string
 	for _, s := range Refine(text, spans, nil) {
 		got = append(got, text[s.Start:s.End])
 	}
-	want := []string{"diabète", "asthme", "diabète, asthme"}
+	want := []string{"diabète", "asthme", "diabète, asthme", "diabète", "asthme"}
 	if !slices.Equal(got, want) {
 		t.Errorf("got %q, want %q", got, want)
 	}
