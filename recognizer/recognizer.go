@@ -264,11 +264,11 @@ type Mask struct {
 // a piece cut from a mask has its own type and category, none if it
 // overlaps no sensitive passage. The caller drops the passages it does
 // not trust, typed ones included, before: Recognizer does so with
-// MinConfidence. Masks of a name or
-// an identifier are not joined to their neighbours over function words,
-// nor to those they touch:
-// go-anon gives each name its own consistent placeholder. Nor are masks of
-// different special categories, or a sensitive mask and one that is not.
+// MinConfidence. Masks of a name or an identifier are not joined to
+// their neighbours over function words, nor to those they touch: go-anon
+// gives each name its own consistent placeholder. Nor are masks of
+// different special categories, or a sensitive mask and one that is not,
+// nor masks of different types across a comma.
 // Masks that overlap are merged whatever they hold: a mask that holds a
 // sensitive passage stays flagged, but with one category only, that of
 // the passage it overlaps most. That category is the merged mask's own:
@@ -280,12 +280,29 @@ func Masks(text string, found, typed, sensitive []indecis.Span) []Mask {
 	for i, s := range found {
 		spans[i] = Span{s.Start, s.End}
 	}
-	own := func(s Span) bool {
+	name := func(s Span) bool {
 		t, _ := typeOf(s, typed, nil)
 		return t == "PERSON" || t == "CODE"
 	}
+	// Across a comma, two masks of different types are two items of a
+	// list, not one description: "Clinique du Val de Saône, 14 rue des
+	// Tanneurs" is an organisation and an address. The types compared are
+	// those of the items on either side of the comma (itemType), not of the
+	// whole masks: the left one may already hold a description of other
+	// types. An item of no type joins any: MISC stands for no type as well
+	// as for a passage typed MISC. The joined mask is then typed after its
+	// largest typed passage, and the item next to the following comma is
+	// the untyped one, so a list whose middle item has no type stays one
+	// mask.
+	listed := func(a, b Span) bool {
+		if !strings.Contains(text[a.End:b.Start], ",") {
+			return false
+		}
+		ta, tb := itemType(text, a, typed, false), itemType(text, b, typed, true)
+		return ta != tb && ta != "MISC" && tb != "MISC"
+	}
 	join := func(a, b Span) bool {
-		return !own(a) && !own(b) && category(text, a, sensitive) == category(text, b, sensitive)
+		return !name(a) && !name(b) && !listed(a, b) && category(text, a, sensitive) == category(text, b, sensitive)
 	}
 	var out []Mask
 	for _, m := range Refine(text, spans, join) {
@@ -493,6 +510,44 @@ func trimFiller(text string, s Span) Span {
 		s = trim(text, Span{s.Start, i})
 	}
 	return s
+}
+
+// itemType returns the type of the typed passage at the start of s (or
+// at its end): the one that starts first (ends last) in s, MISC if there
+// is none, or if words other than function words lie between it and the
+// edge, which belong to no typed passage. A passage s holds half of or
+// less belongs to a neighbouring mask, as in split: one that runs past a
+// comma ("Clinique du Val de Saône, Ch") does not type the next item.
+// Passages that share the edge are ranked as in category, whatever the
+// order of the model's list.
+func itemType(text string, s Span, typed []indecis.Span, start bool) ner.EntityType {
+	// near is how near the edge a passage lies.
+	near := func(t indecis.Span) int {
+		if start {
+			return -t.Start
+		}
+		return t.End
+	}
+	var best *indecis.Span
+	for i, t := range typed {
+		if o := min(s.End, t.End) - max(s.Start, t.Start); 2*o <= t.End-t.Start {
+			continue
+		}
+		if best == nil || near(t) > near(*best) || near(t) == near(*best) && better(t, *best) {
+			best = &typed[i]
+		}
+	}
+	if best == nil {
+		return "MISC"
+	}
+	gap := text[min(best.End, s.End):s.End]
+	if start {
+		gap = text[s.Start:max(best.Start, s.Start)]
+	}
+	if informative(gap) {
+		return "MISC"
+	}
+	return ner.EntityType(best.Type)
 }
 
 // typeOf names a mask after the typed passage it overlaps most, MISC if

@@ -433,6 +433,148 @@ func TestMasksTouchingBrackets(t *testing.T) {
 	}
 }
 
+// Across a comma, masks of different types are kept apart: an
+// organisation and its address, a post and its service. Masks of one
+// type, or of no type, are joined, and so are masks of different types
+// across function words alone.
+func TestMasksListedTypes(t *testing.T) {
+	text := "Établissement : Clinique du Val de Saône, 14 rue des Tanneurs, 71100 Chalon-sur-Saône. " +
+		"Poste : infirmière de nuit, service de pneumologie. Il est magasinier sur le site de Stains, dans l'entrepôt, en équipe."
+	at := func(s, typ string) indecis.Span {
+		i := strings.Index(text, s)
+		if i < 0 {
+			t.Fatalf("%q not in text", s)
+		}
+		return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ}
+	}
+	found := []indecis.Span{
+		at("Clinique du Val de Saône", "QUASI"), at("14 rue des Tanneurs", "QUASI"), at("71100 Chalon-sur-Saône", "QUASI"),
+		at("infirmière de nuit", "QUASI"), at("service de pneumologie", "QUASI"),
+		at("magasinier", "QUASI"), at("site de Stains", "QUASI"), at("entrepôt", "QUASI"),
+	}
+	typed := []indecis.Span{
+		at("Clinique du Val de Saône", "ORG"), at("14 rue des Tanneurs", "LOC"), at("71100 Chalon-sur-Saône", "LOC"),
+		at("infirmière de nuit", "DEM"), at("service de pneumologie", "ORG"),
+		at("magasinier", "DEM"), at("site de Stains", "LOC"),
+	}
+	var got []string
+	for _, m := range Masks(text, found, typed, nil) {
+		got = append(got, text[m.Start:m.End]+" "+string(m.Type))
+	}
+	want := []string{
+		"Clinique du Val de Saône ORG", "14 rue des Tanneurs, 71100 Chalon-sur-Saône LOC",
+		"infirmière de nuit DEM", "service de pneumologie ORG",
+		"magasinier sur le site de Stains, dans l'entrepôt LOC",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// The types compared across a comma are those of the items next to it.
+func TestMasksListedShapes(t *testing.T) {
+	type typedSpan struct{ text, typ string }
+	cases := []struct {
+		name, text string
+		found      []string
+		typed      []typedSpan
+		sensitive  []typedSpan
+		want       []string
+	}{
+		{"an item typed MISC joins",
+			"Clinique du Val de Saône, entrepôt nord.", []string{"Clinique du Val de Saône", "entrepôt nord"},
+			[]typedSpan{{"Clinique du Val de Saône", "ORG"}, {"entrepôt nord", "MISC"}},
+			nil,
+			[]string{"Clinique du Val de Saône, entrepôt nord ORG"}},
+		{"a comma and function words",
+			"Clinique du Val de Saône, dans le quartier Saint-Jean.", []string{"Clinique du Val de Saône", "quartier Saint-Jean"},
+			[]typedSpan{{"Clinique du Val de Saône", "ORG"}, {"quartier Saint-Jean", "LOC"}},
+			nil,
+			[]string{"Clinique du Val de Saône ORG", "quartier Saint-Jean LOC"}},
+		// The left mask is typed after its description, DEM; the item
+		// before the comma is an organisation, as the one after it.
+		{"a description before the comma",
+			"Infirmière de nuit en réanimation à l'hôpital Nord, service de pneumologie.",
+			[]string{"Infirmière de nuit en réanimation", "hôpital Nord", "service de pneumologie"},
+			[]typedSpan{{"Infirmière de nuit en réanimation", "DEM"}, {"hôpital Nord", "ORG"}, {"service de pneumologie", "ORG"}},
+			nil,
+			[]string{"Infirmière de nuit en réanimation à l'hôpital Nord, service de pneumologie DEM"}},
+		{"another type before the comma",
+			"Infirmière de nuit en réanimation à l'hôpital Nord, 14 rue des Tanneurs.",
+			[]string{"Infirmière de nuit en réanimation", "hôpital Nord", "14 rue des Tanneurs"},
+			[]typedSpan{{"Infirmière de nuit en réanimation", "DEM"}, {"hôpital Nord", "ORG"}, {"14 rue des Tanneurs", "LOC"}},
+			nil,
+			[]string{"Infirmière de nuit en réanimation à l'hôpital Nord DEM", "14 rue des Tanneurs LOC"}},
+		// Words of no typed passage at the comma: the item has no type,
+		// and joins.
+		{"an untyped item at the comma",
+			"Infirmière de nuit à l'hôpital, service de pneumologie.",
+			[]string{"Infirmière de nuit à l'hôpital", "service de pneumologie"},
+			[]typedSpan{{"Infirmière", "DEM"}, {"service de pneumologie", "ORG"}},
+			nil,
+			[]string{"Infirmière de nuit à l'hôpital, service de pneumologie ORG"}},
+		// A passage that runs past the comma belongs to the item before it.
+		{"a typed passage past the comma",
+			"Clinique du Val de Saône, Chalon-sur-Saône.", []string{"Clinique du Val de Saône", "Chalon-sur-Saône"},
+			[]typedSpan{{"Clinique du Val de Saône, Ch", "ORG"}, {"Chalon-sur-Saône", "LOC"}},
+			nil,
+			[]string{"Clinique du Val de Saône ORG", "Chalon-sur-Saône LOC"}},
+		// Passages that end together are ranked whatever their order.
+		{"passages ending together",
+			"Hôpital Nord, 14 rue des Tanneurs.", []string{"Hôpital Nord", "14 rue des Tanneurs"},
+			[]typedSpan{{"Nord", "LOC"}, {"Hôpital Nord", "ORG"}, {"14 rue des Tanneurs", "LOC"}},
+			nil,
+			[]string{"Hôpital Nord ORG", "14 rue des Tanneurs LOC"}},
+		{"passages ending together, the other order",
+			"Hôpital Nord, 14 rue des Tanneurs.", []string{"Hôpital Nord", "14 rue des Tanneurs"},
+			[]typedSpan{{"Hôpital Nord", "ORG"}, {"Nord", "LOC"}, {"14 rue des Tanneurs", "LOC"}},
+			nil,
+			[]string{"Hôpital Nord ORG", "14 rue des Tanneurs LOC"}},
+		// Of one type, masks of different categories are still kept apart.
+		{"one type, two categories",
+			"Il jeûne pendant le ramadan, diabétique depuis l'enfance.",
+			[]string{"jeûne pendant le ramadan", "diabétique depuis l'enfance"},
+			[]typedSpan{{"jeûne pendant le ramadan", "DEM"}, {"diabétique depuis l'enfance", "DEM"}},
+			[]typedSpan{{"jeûne pendant le ramadan", "BELIEF"}, {"diabétique", "HEALTH"}},
+			[]string{"jeûne pendant le ramadan DEM", "diabétique depuis l'enfance DEM"}},
+		{"one type, one category",
+			"Il jeûne pendant le ramadan, prie le vendredi.",
+			[]string{"jeûne pendant le ramadan", "prie le vendredi"},
+			[]typedSpan{{"jeûne pendant le ramadan", "DEM"}, {"prie le vendredi", "DEM"}},
+			[]typedSpan{{"jeûne pendant le ramadan", "BELIEF"}, {"prie le vendredi", "BELIEF"}},
+			[]string{"jeûne pendant le ramadan, prie le vendredi DEM"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			at := func(s, typ string) indecis.Span {
+				i := strings.Index(c.text, s)
+				if i < 0 {
+					t.Fatalf("%q not in text", s)
+				}
+				return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ}
+			}
+			var found, typed []indecis.Span
+			for _, f := range c.found {
+				found = append(found, at(f, "QUASI"))
+			}
+			for _, ts := range c.typed {
+				typed = append(typed, at(ts.text, ts.typ))
+			}
+			var sensitive []indecis.Span
+			for _, ts := range c.sensitive {
+				sensitive = append(sensitive, at(ts.text, ts.typ))
+			}
+			var got []string
+			for _, m := range Masks(c.text, found, typed, sensitive) {
+				got = append(got, c.text[m.Start:m.End]+" "+string(m.Type))
+			}
+			if !slices.Equal(got, c.want) {
+				t.Errorf("got %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
 // A semicolon, a colon or an ellipsis is left out of a mask's edge, and
 // keeps two masks apart; a comma is left out too, but joins them.
 func TestRefinePunctuationJoin(t *testing.T) {
