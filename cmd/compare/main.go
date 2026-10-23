@@ -67,12 +67,12 @@ func main() {
 	merge := flag.Bool("merge", false, "score passages whatever their type: masked or not")
 	novelFlag := flag.String("novel", "", "lexicon of the training set (cmd/lexicon): score only the labeled passages none of whose words the training set had in their category; found passages over the others are ignored")
 	bias := flag.Float64("bias", 0, "indecis decoding bias towards passages (indecis.WithSpanBias)")
-	minConfidence := flag.Float64("minconfidence", 0, "drop the indecis passages less confident, sensitive ones included, as the recognizer's MinConfidence")
+	minConfidence := flag.Float64("minconfidence", 0, "drop the indecis passages less confident, sensitive and typed ones included, as the recognizer's MinConfidence")
 	jsonOut := flag.String("json", "", "write the scores as JSON to this file")
 	showErrors := flag.Int("errors", 0, "print this many errors per engine")
 	showLeaks := flag.Int("leaks", 0, "print this many labeled passages left partly or fully unmasked")
 	showExtra := flag.Int("extra", 0, "print this many found passages that overlap no labeled one")
-	refine := flag.Bool("refine", false, "refine indecis masks as the go-anon adapter does (recognizer.Masks): grow the masks cut inside a word to the whole word and leave out the spaces at their edges, drop function-word masks, join masks over function words when they hold the same special category, or none; with the sensitive question, also report the categories the masks keep; implies -merge")
+	refine := flag.Bool("refine", false, "refine indecis masks as the go-anon adapter does (recognizer.Masks): grow the masks cut inside a word to the whole word and leave out the spaces, the punctuation of sentences and the unpaired brackets at their edges, cut a mask that holds several names or identifiers, drop function-word masks, join masks over function words when they hold the same special category, or none; with the sensitive question, also report the categories the masks keep; implies -merge")
 	flag.Parse()
 	novel := novelFlag
 	if *refine {
@@ -196,7 +196,7 @@ func main() {
 				flagged, raw = make([][]entity, len(texts)), make([][]entity, len(texts))
 			}
 			// As the recognizer: the passages under -minconfidence, the
-			// sensitive ones included, are dropped before refining.
+			// sensitive and typed ones included, are dropped before refining.
 			confident := func(spans []indecis.Span) []indecis.Span {
 				kept := spans[:0:0]
 				for _, s := range spans {
@@ -242,7 +242,7 @@ func main() {
 					for _, s := range sens {
 						raw[i] = append(raw[i], entity{s.Start, s.End, s.Type})
 					}
-					for _, m := range recognizer.Masks(t, spans, d[0]["entities"].Spans, sens) {
+					for _, m := range recognizer.Masks(t, spans, confident(d[0]["entities"].Spans), sens) {
 						out[i] = append(out[i], entity{m.Start, m.End, "ANY"})
 						if categories && m.Sensitive != "" {
 							flagged[i] = append(flagged[i], entity{m.Start, m.End, m.Sensitive})

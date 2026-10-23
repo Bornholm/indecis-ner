@@ -21,7 +21,10 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/bornholm/go-anon/pkg/ner"
 	"github.com/bornholm/indecis"
@@ -148,8 +151,8 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 		}
 		typed = d[0]["entities"].Spans
 	}
-	// The sensitive passages too: below the threshold, they neither block
-	// a join nor flag a mask.
+	// The sensitive and typed passages too: below the threshold, they
+	// neither block a join, nor flag, type or cut a mask.
 	confident := func(spans []indecis.Span) []indecis.Span {
 		kept := spans[:0:0]
 		for _, s := range spans {
@@ -159,7 +162,7 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 		}
 		return kept
 	}
-	found, sensitive = confident(found), confident(sensitive)
+	found, sensitive, typed = confident(found), confident(sensitive), confident(typed)
 	var out []ner.Entity
 	if r.Raw {
 		for _, s := range found {
@@ -254,9 +257,14 @@ type Mask struct {
 	Sensitive  string
 }
 
-// Masks refines the passages found by the mask questions (Refine), types
-// each mask from the typed passages of the entities question and gives
-// it the special category of the sensitive passages. Masks of a name or
+// Masks refines the passages found by the mask questions (Refine), cuts
+// a mask that holds several names or identifiers into one mask each
+// (split), types each mask from the typed passages of the entities
+// question and gives it the special category of the sensitive passages:
+// a piece cut from a mask has its own type and category, none if it
+// overlaps no sensitive passage. The caller drops the passages it does
+// not trust, typed ones included, before: Recognizer does so with
+// MinConfidence. Masks of a name or
 // an identifier are not joined to their neighbours over function words,
 // nor to those they touch:
 // go-anon gives each name its own consistent placeholder. Nor are masks of
@@ -280,11 +288,211 @@ func Masks(text string, found, typed, sensitive []indecis.Span) []Mask {
 		return !own(a) && !own(b) && category(text, a, sensitive) == category(text, b, sensitive)
 	}
 	var out []Mask
-	for _, s := range Refine(text, spans, join) {
-		typ, conf := typeOf(s, typed, found)
-		out = append(out, Mask{s, typ, conf, category(text, s, sensitive)})
+	for _, m := range Refine(text, spans, join) {
+		for _, s := range split(text, m, typed) {
+			typ, conf := typeOf(s, typed, found)
+			out = append(out, Mask{s, typ, conf, category(text, s, sensitive)})
+		}
 	}
 	return out
+}
+
+// split cuts a mask that holds several names or identifiers of the typed
+// passages into one mask each: the model may give "06 42 18 77 05,
+// nadia.ferrand@laposte.net" as one passage to mask, which go-anon would
+// replace by one placeholder. What comes before the first stays with it
+// ("Mme Carmen Roussel"); between two of them, the punctuation and
+// function words that follow the first are left readable, a civility of
+// one or two titles goes with the next ("et M. Paul Martin") and the
+// rest is a mask of its own ("présidente"), as is what follows the last,
+// past its function words.
+// The pieces only lose their edges (trim): grown, they could take the
+// sign between two names, and the name after it, back into one mask.
+func split(text string, m Span, typed []indecis.Span) []Span {
+	type own struct {
+		Span
+		typ string
+	}
+	var in []own
+	for _, t := range typed {
+		if t.Type != "PERSON" && t.Type != "CODE" {
+			continue
+		}
+		// A passage the mask only clips, half of it or less, belongs to a
+		// neighbouring mask.
+		s := Span{max(t.Start, m.Start), min(t.End, m.End)}
+		if 2*(s.End-s.Start) <= t.End-t.Start {
+			continue
+		}
+		// A passage cut inside a word takes the whole word, within the mask.
+		for s.Start > m.Start {
+			r, size := utf8.DecodeLastRuneInString(text[:s.Start])
+			if !isWordRune(r) {
+				break
+			}
+			s.Start -= size
+		}
+		for s.End < m.End {
+			r, size := utf8.DecodeRuneInString(text[s.End:])
+			if !isWordRune(r) {
+				break
+			}
+			s.End += size
+		}
+		in = append(in, own{s, string(t.Type)})
+	}
+	slices.SortFunc(in, func(a, b own) int { return a.Start - b.Start })
+	// Passages that overlap, touch, or are separated by the signs of an
+	// identifier ("nadia.ferrand" and "@laposte.net") are one name or one
+	// identifier; separated by spaces only, when of one type ("Carmen" and
+	// "Roussel", not "Paul Martin" and "06 42 18 77 05").
+	var owns []own
+	for _, s := range in {
+		if n := len(owns); n > 0 && (s.Start <= owns[n-1].End || oneWord(text[owns[n-1].End:s.Start], s.typ == owns[n-1].typ)) {
+			owns[n-1].End = max(owns[n-1].End, s.End)
+			continue
+		}
+		owns = append(owns, s)
+	}
+	if len(owns) < 2 {
+		return []Span{m}
+	}
+	// The pieces between and after the names lose the function words at
+	// their end too, and are dropped if nothing else is left; a name keeps
+	// them, and is kept whatever it holds, as "Le" in "Jean Le".
+	var out []Span
+	add := func(p Span, name bool) {
+		p = trim(text, p)
+		if !name {
+			p = trimFiller(text, p)
+		}
+		if p.Start < p.End && (name || informative(text[p.Start:p.End])) {
+			out = append(out, p)
+		}
+	}
+	start := m.Start
+	for i := range len(owns) - 1 {
+		add(Span{start, owns[i].End}, true)
+		from := skipFiller(text, owns[i].End, owns[i+1].Start)
+		start = civility(text, from, owns[i+1].Start)
+		add(Span{from, start}, false)
+	}
+	last := owns[len(owns)-1].End
+	add(Span{start, last}, true)
+	add(Span{skipFiller(text, last, m.End), m.End}, false)
+	return out
+}
+
+// oneWord reports whether the gap between two typed passages leaves them
+// one name or one identifier: spaces on one line only, between passages
+// of one type (same), or the signs that join the parts of an identifier
+// ("nadia.ferrand@laposte.net", "Roussel-Martin"). A comma, a slash or a
+// line between them separates two: "Roussel,Martin", "06 42 18 77
+// 05/06 12 34 56 78".
+func oneWord(gap string, same bool) bool {
+	if strings.ContainsAny(gap, "\n\r") {
+		return false
+	}
+	if strings.TrimSpace(gap) == "" {
+		return same
+	}
+	return strings.Trim(gap, ".@-_") == ""
+}
+
+// skipFiller returns where the first word other than a function word
+// starts in text[from:to], to if there is none.
+func skipFiller(text string, from, to int) int {
+	for i := from; i < to; {
+		r, size := utf8.DecodeRuneInString(text[i:])
+		if !isWordRune(r) {
+			i += size
+			continue
+		}
+		j := i
+		for j < to {
+			r, size := utf8.DecodeRuneInString(text[j:])
+			if !isWordRune(r) {
+				break
+			}
+			j += size
+		}
+		if !FunctionWords[strings.ToLower(text[i:j])] {
+			return i
+		}
+		i = j
+	}
+	return to
+}
+
+// civility returns where the civility of the name at to starts: at most
+// two titles right before it, separated by spaces, each abbreviation
+// with or without its full stop ("M. Paul Martin", "Mme Dr Weiss"), not before from.
+func civility(text string, from, to int) int {
+	start := to
+	for range 2 {
+		i := start
+		for i > from {
+			r, size := utf8.DecodeLastRuneInString(text[:i])
+			if !unicode.IsSpace(r) {
+				break
+			}
+			i -= size
+		}
+		dot := false
+		if r, size := utf8.DecodeLastRuneInString(text[:i]); i > from && r == '.' {
+			i -= size
+			dot = true
+		}
+		j := i
+		for j > from {
+			r, size := utf8.DecodeLastRuneInString(text[:j])
+			if !isWordRune(r) {
+				break
+			}
+			j -= size
+		}
+		// A title before a full stop is an abbreviation ("M.", "Dr."): a
+		// whole word before one ends a sentence ("le docteur. M. Paul").
+		// One of one or two letters is written with a capital: "m." ends
+		// "1,75 m.".
+		w := text[j:i]
+		first, _ := utf8.DecodeRuneInString(w)
+		n := utf8.RuneCountInString(w)
+		if j == i || !titles[strings.ToLower(w)] || dot && n > 4 || n <= 2 && !unicode.IsUpper(first) {
+			break
+		}
+		start = j
+	}
+	return start
+}
+
+// titles are the civilities and titles written before a name.
+var titles = map[string]bool{}
+
+func init() {
+	for _, w := range strings.Fields(`m mme mmes mlle mlles mm mr mrs ms dr pr me mgr monsieur madame mademoiselle messieurs mesdames docteur professeur maître`) {
+		titles[w] = true
+	}
+}
+
+// trimFiller leaves the function words out of the end of a mask, and the
+// edges they uncover: "présidente, et" before a name becomes "présidente".
+func trimFiller(text string, s Span) Span {
+	for s.Start < s.End {
+		i := s.End
+		for i > s.Start {
+			r, size := utf8.DecodeLastRuneInString(text[:i])
+			if !isWordRune(r) {
+				break
+			}
+			i -= size
+		}
+		if i == s.End || !FunctionWords[strings.ToLower(text[i:s.End])] {
+			break
+		}
+		s = trim(text, Span{s.Start, i})
+	}
+	return s
 }
 
 // typeOf names a mask after the typed passage it overlaps most, MISC if
