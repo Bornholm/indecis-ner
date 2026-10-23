@@ -258,6 +258,10 @@ func TestMasksSplitShapes(t *testing.T) {
 			"Mme Carmen Roussel vient.", "Mme Carmen Roussel",
 			[]typedSpan{{"Carmen", "PERSON"}, {" Roussel", "PERSON"}},
 			[]string{"Mme Carmen Roussel PERSON"}},
+		{"one name in two passages, a space between them",
+			"Mme Carmen Roussel vient.", "Mme Carmen Roussel",
+			[]typedSpan{{"Carmen", "PERSON"}, {"Roussel", "PERSON"}},
+			[]string{"Mme Carmen Roussel PERSON"}},
 		{"one identifier in two passages, a sign between them",
 			"Écrire à nadia.ferrand@laposte.net demain.", "nadia.ferrand@laposte.net",
 			[]typedSpan{{"nadia", "CODE"}, {"ferrand@laposte.net", "CODE"}},
@@ -281,6 +285,24 @@ func TestMasksSplitShapes(t *testing.T) {
 			"Mme Roux. Elle est suivie au CMP, M. Paul Martin.", "Mme Roux. Elle est suivie au CMP, M. Paul Martin",
 			[]typedSpan{{"Roux", "PERSON"}, {"Paul Martin", "PERSON"}},
 			[]string{"Mme Roux PERSON", "est suivie au CMP MISC", "M. Paul Martin PERSON"}},
+		// A civility is a title: the word before a full stop is not one.
+		{"a full stop before a civility",
+			"Mme Roux. Elle est suivie au CMP. M. Paul Martin.", "Mme Roux. Elle est suivie au CMP. M. Paul Martin",
+			[]typedSpan{{"Roux", "PERSON"}, {"Paul Martin", "PERSON"}},
+			[]string{"Mme Roux PERSON", "est suivie au CMP MISC", "M. Paul Martin PERSON"}},
+		{"an apposition right before a civility",
+			"Mme Roussel, présidente M. Paul Martin.", "Mme Roussel, présidente M. Paul Martin",
+			[]typedSpan{{"Roussel", "PERSON"}, {"Paul Martin", "PERSON"}},
+			[]string{"Mme Roussel PERSON", "présidente MISC", "M. Paul Martin PERSON"}},
+		{"two titles",
+			"Mme Roussel et Mme Dr Weiss.", "Mme Roussel et Mme Dr Weiss",
+			[]typedSpan{{"Roussel", "PERSON"}, {"Weiss", "PERSON"}},
+			[]string{"Mme Roussel PERSON", "Mme Dr Weiss PERSON"}},
+		// A name keeps a last word that is a function word.
+		{"a name ending on a function word",
+			"Jean Le et Paul Des sont venus.", "Jean Le et Paul Des",
+			[]typedSpan{{"Jean Le", "PERSON"}, {"Paul Des", "PERSON"}},
+			[]string{"Jean Le PERSON", "Paul Des PERSON"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -476,6 +498,40 @@ func TestMinConfidenceSensitive(t *testing.T) {
 		}
 		if !slices.Equal(got, c.want) {
 			t.Errorf("sensitive confidence %g: got %q, want %q", c.conf, got, c.want)
+		}
+	}
+}
+
+// A typed passage under MinConfidence does not cut a mask.
+func TestMinConfidenceTyped(t *testing.T) {
+	text := "Contact : Carmen Roussel, Paul Martin."
+	at := func(s, typ string, conf float64) indecis.Span {
+		i := strings.Index(text, s)
+		return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ, Confidence: conf}
+	}
+	masks := []indecis.Span{at("Carmen Roussel, Paul Martin", "DIRECT", 0.9)}
+	for _, c := range []struct {
+		conf float64
+		want []string
+	}{
+		{0.2, []string{"Carmen Roussel, Paul Martin"}},
+		{0.8, []string{"Carmen Roussel", "Paul Martin"}},
+	} {
+		typed := []indecis.Span{at("Carmen Roussel", "PERSON", 0.9), at("Paul Martin", "PERSON", c.conf)}
+		r := &Recognizer{MinConfidence: 0.5, known: map[string][]decided{
+			text: {{masks: masks, typed: typed}},
+		}}
+		var got []string
+		r.OnFound = func(_ string, found []Found) {
+			for _, f := range found {
+				got = append(got, f.Text)
+			}
+		}
+		if _, err := r.Recognize(text); err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(got, c.want) {
+			t.Errorf("typed confidence %g: got %q, want %q", c.conf, got, c.want)
 		}
 	}
 }

@@ -196,7 +196,7 @@ func main() {
 				flagged, raw = make([][]entity, len(texts)), make([][]entity, len(texts))
 			}
 			// As the recognizer: the passages under -minconfidence, the
-			// sensitive ones included, are dropped before refining.
+			// sensitive and typed ones included, are dropped before refining.
 			confident := func(spans []indecis.Span) []indecis.Span {
 				kept := spans[:0:0]
 				for _, s := range spans {
@@ -242,7 +242,7 @@ func main() {
 					for _, s := range sens {
 						raw[i] = append(raw[i], entity{s.Start, s.End, s.Type})
 					}
-					for _, m := range recognizer.Masks(t, spans, d[0]["entities"].Spans, sens) {
+					for _, m := range recognizer.Masks(t, spans, confident(d[0]["entities"].Spans), sens) {
 						out[i] = append(out[i], entity{m.Start, m.End, "ANY"})
 						if categories && m.Sensitive != "" {
 							flagged[i] = append(flagged[i], entity{m.Start, m.End, m.Sensitive})

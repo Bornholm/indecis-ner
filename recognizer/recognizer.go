@@ -151,8 +151,8 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 		}
 		typed = d[0]["entities"].Spans
 	}
-	// The sensitive passages too: below the threshold, they neither block
-	// a join nor flag a mask.
+	// The sensitive and typed passages too: below the threshold, they
+	// neither block a join, nor flag, type or cut a mask.
 	confident := func(spans []indecis.Span) []indecis.Span {
 		kept := spans[:0:0]
 		for _, s := range spans {
@@ -162,7 +162,7 @@ func (r *Recognizer) RecognizeContext(ctx context.Context, text string) ([]ner.E
 		}
 		return kept
 	}
-	found, sensitive = confident(found), confident(sensitive)
+	found, sensitive, typed = confident(found), confident(sensitive), confident(typed)
 	var out []ner.Entity
 	if r.Raw {
 		for _, s := range found {
@@ -334,13 +334,12 @@ func split(text string, m Span, typed []indecis.Span) []Span {
 		in = append(in, s)
 	}
 	slices.SortFunc(in, func(a, b Span) int { return a.Start - b.Start })
-	// Passages that overlap, touch or are separated by signs without a
-	// space ("nadia.ferrand" and "@laposte.net") are one name or one
-	// identifier.
+	// Passages that overlap, touch, or are separated by spaces only
+	// ("Carmen" and "Roussel") or by signs without a space
+	// ("nadia.ferrand" and "@laposte.net") are one name or one identifier.
 	var owns []Span
 	for _, s := range in {
-		if n := len(owns); n > 0 && (s.Start <= owns[n-1].End ||
-			!strings.ContainsFunc(text[owns[n-1].End:s.Start], unicode.IsSpace)) {
+		if n := len(owns); n > 0 && (s.Start <= owns[n-1].End || oneWord(text[owns[n-1].End:s.Start])) {
 			owns[n-1].End = max(owns[n-1].End, s.End)
 			continue
 		}
@@ -349,24 +348,35 @@ func split(text string, m Span, typed []indecis.Span) []Span {
 	if len(owns) < 2 {
 		return []Span{m}
 	}
-	var pieces []Span
-	start := m.Start
-	for i := range len(owns) - 1 {
-		pieces = append(pieces, Span{start, owns[i].End})
-		from := skipFiller(text, owns[i].End, owns[i+1].Start)
-		start = civility(text, from, owns[i+1].Start)
-		pieces = append(pieces, Span{from, start})
-	}
-	last := owns[len(owns)-1].End
-	pieces = append(pieces, Span{start, last}, Span{last, m.End})
+	// The pieces between and after the names lose the function words at
+	// their end too; a name keeps them, as "Le" in "Jean Le".
 	var out []Span
-	for _, p := range pieces {
-		p = trimFiller(text, trim(text, p))
+	add := func(p Span, name bool) {
+		p = trim(text, p)
+		if !name {
+			p = trimFiller(text, p)
+		}
 		if p.Start < p.End && informative(text[p.Start:p.End]) {
 			out = append(out, p)
 		}
 	}
+	start := m.Start
+	for i := range len(owns) - 1 {
+		add(Span{start, owns[i].End}, true)
+		from := skipFiller(text, owns[i].End, owns[i+1].Start)
+		start = civility(text, from, owns[i+1].Start)
+		add(Span{from, start}, false)
+	}
+	last := owns[len(owns)-1].End
+	add(Span{start, last}, true)
+	add(Span{last, m.End}, false)
 	return out
+}
+
+// oneWord reports whether the gap between two typed passages leaves them
+// one name or one identifier: spaces only, or signs without a space.
+func oneWord(gap string) bool {
+	return strings.TrimSpace(gap) == "" || !strings.ContainsFunc(gap, unicode.IsSpace)
 }
 
 // skipFiller returns where the first word other than a function word
@@ -395,8 +405,8 @@ func skipFiller(text string, from, to int) int {
 }
 
 // civility returns where the civility of the name at to starts: at most
-// two words other than function words right before it, separated by
-// spaces or a full stop after a word ("M. Paul"), not before from.
+// two titles right before it, separated by spaces, each with or without
+// its full stop ("M. Paul Martin", "Mme Dr Weiss"), not before from.
 func civility(text string, from, to int) int {
 	start := to
 	for range 2 {
@@ -419,12 +429,21 @@ func civility(text string, from, to int) int {
 			}
 			j -= size
 		}
-		if j == i || FunctionWords[strings.ToLower(text[j:i])] {
+		if j == i || !titles[strings.ToLower(text[j:i])] {
 			break
 		}
 		start = j
 	}
 	return start
+}
+
+// titles are the civilities and titles written before a name.
+var titles = map[string]bool{}
+
+func init() {
+	for _, w := range strings.Fields(`m mme mmes mlle mlles mm mr mrs ms dr pr me mgr monsieur madame mademoiselle messieurs mesdames docteur professeur maître`) {
+		titles[w] = true
+	}
 }
 
 // trimFiller leaves the function words out of the end of a mask, and the
