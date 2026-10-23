@@ -235,6 +235,98 @@ func TestMasksSplit(t *testing.T) {
 	}
 }
 
+// The shapes the cut depends on: the passages of the entities question
+// do not always bound a name as the text does.
+func TestMasksSplitShapes(t *testing.T) {
+	type typedSpan struct{ text, typ string }
+	cases := []struct {
+		name, text, found string
+		typed             []typedSpan
+		want              []string
+	}{
+		{"one passage over identifiers and an address",
+			"Suivi : 06 42 18 77 05, nadia.ferrand@laposte.net, 8 allée des Peupliers.",
+			"06 42 18 77 05, nadia.ferrand@laposte.net, 8 allée des Peupliers.",
+			[]typedSpan{{"06 42 18 77 05", "CODE"}, {"nadia.ferrand@laposte.net", "CODE"}, {"8 allée des Peupliers", "LOC"}},
+			[]string{"06 42 18 77 05 CODE", "nadia.ferrand@laposte.net CODE", "8 allée des Peupliers LOC"}},
+		// The pieces do not grow over the sign back into one mask.
+		{"two names separated by a sign",
+			"Mme Carmen Roussel/M. Paul Martin sont venus.", "Mme Carmen Roussel/M. Paul Martin",
+			[]typedSpan{{"Carmen Roussel", "PERSON"}, {"Paul Martin", "PERSON"}},
+			[]string{"Mme Carmen Roussel PERSON", "M. Paul Martin PERSON"}},
+		{"one name in two passages that touch",
+			"Mme Carmen Roussel vient.", "Mme Carmen Roussel",
+			[]typedSpan{{"Carmen", "PERSON"}, {" Roussel", "PERSON"}},
+			[]string{"Mme Carmen Roussel PERSON"}},
+		{"one identifier in two passages, a sign between them",
+			"Écrire à nadia.ferrand@laposte.net demain.", "nadia.ferrand@laposte.net",
+			[]typedSpan{{"nadia", "CODE"}, {"ferrand@laposte.net", "CODE"}},
+			[]string{"nadia.ferrand@laposte.net CODE"}},
+		{"a passage cut inside a word",
+			"Mme Carmen Roussel et M. Paul Martin.", "Mme Carmen Roussel et M. Paul Martin",
+			[]typedSpan{{"Carmen Rouss", "PERSON"}, {"aul Martin", "PERSON"}},
+			[]string{"Mme Carmen Roussel PERSON", "M. Paul Martin PERSON"}},
+		// A name the mask only clips is not a name of its own.
+		{"a name the mask clips",
+			"Vu par Carmen Roussel avec Paul Martin.", "Carmen Roussel avec P",
+			[]typedSpan{{"Carmen Roussel", "PERSON"}, {"Paul Martin", "PERSON"}},
+			[]string{"Carmen Roussel avec Paul PERSON"}},
+		// Only the civility goes with the next name: an apposition is a
+		// mask of its own.
+		{"an apposition between two names",
+			"Mme Roussel, présidente, et M. Paul Martin.", "Mme Roussel, présidente, et M. Paul Martin",
+			[]typedSpan{{"Roussel", "PERSON"}, {"Paul Martin", "PERSON"}},
+			[]string{"Mme Roussel PERSON", "présidente MISC", "M. Paul Martin PERSON"}},
+		{"a sentence between two names",
+			"Mme Roux. Elle est suivie au CMP, M. Paul Martin.", "Mme Roux. Elle est suivie au CMP, M. Paul Martin",
+			[]typedSpan{{"Roux", "PERSON"}, {"Paul Martin", "PERSON"}},
+			[]string{"Mme Roux PERSON", "est suivie au CMP MISC", "M. Paul Martin PERSON"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			at := func(s, typ string) indecis.Span {
+				i := strings.Index(c.text, s)
+				if i < 0 {
+					t.Fatalf("%q not in text", s)
+				}
+				return indecis.Span{Start: i, End: i + len(s), Text: s, Type: typ}
+			}
+			found := []indecis.Span{at(c.found, "DIRECT")}
+			var typed []indecis.Span
+			for _, ts := range c.typed {
+				typed = append(typed, at(ts.text, ts.typ))
+			}
+			var got []string
+			for _, m := range Masks(c.text, found, typed, nil) {
+				got = append(got, c.text[m.Start:m.End]+" "+string(m.Type))
+			}
+			if !slices.Equal(got, c.want) {
+				t.Errorf("got %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// A semicolon or a colon is left out of a mask's edge, and keeps two
+// masks apart; a comma is left out too, but joins them.
+func TestRefinePunctuationJoin(t *testing.T) {
+	text := "Il a du diabète; asthme aussi. Il a du diabète, asthme aussi."
+	semi := strings.Index(text, "diabète;")
+	comma := strings.LastIndex(text, "diabète,")
+	spans := []Span{
+		{semi, semi + len("diabète;")}, {semi + len("diabète; "), semi + len("diabète; asthme")},
+		{comma, comma + len("diabète,")}, {comma + len("diabète, "), comma + len("diabète, asthme")},
+	}
+	var got []string
+	for _, s := range Refine(text, spans, nil) {
+		got = append(got, text[s.Start:s.End])
+	}
+	want := []string{"diabète", "asthme", "diabète, asthme"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 // A mask grown over a sign between two words takes the word of another
 // mask: the two overlap and are merged whatever their categories, the
 // loss of #2 that remains at such a sign.

@@ -23,6 +23,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/bornholm/go-anon/pkg/ner"
@@ -256,9 +257,12 @@ type Mask struct {
 	Sensitive  string
 }
 
-// Masks refines the passages found by the mask questions (Refine), types
-// each mask from the typed passages of the entities question and gives
-// it the special category of the sensitive passages. Masks of a name or
+// Masks refines the passages found by the mask questions (Refine), cuts
+// a mask that holds several names or identifiers into one mask each
+// (split), types each mask from the typed passages of the entities
+// question and gives it the special category of the sensitive passages:
+// a piece cut from a mask has its own type and category, none if it
+// overlaps no sensitive passage. Masks of a name or
 // an identifier are not joined to their neighbours over function words,
 // nor to those they touch:
 // go-anon gives each name its own consistent placeholder. Nor are masks of
@@ -294,22 +298,49 @@ func Masks(text string, found, typed, sensitive []indecis.Span) []Mask {
 // split cuts a mask that holds several names or identifiers of the typed
 // passages into one mask each: the model may give "06 42 18 77 05,
 // nadia.ferrand@laposte.net" as one passage to mask, which go-anon would
-// replace by one placeholder. Between two of them, the punctuation and
-// function words that follow the first are left readable, and the rest
-// goes with the next, as its civility ("et M. Paul Martin"). What comes
-// before the first stays with it ("Mme Carmen Roussel"); what follows
-// the last is a mask of its own.
+// replace by one placeholder. What comes before the first stays with it
+// ("Mme Carmen Roussel"); between two of them, the punctuation and
+// function words that follow the first are left readable, a civility of
+// one or two words goes with the next ("et M. Paul Martin") and the rest
+// is a mask of its own ("présidente"), as is what follows the last.
+// The pieces only lose their edges (trim): grown, they could take the
+// sign between two names, and the name after it, back into one mask.
 func split(text string, m Span, typed []indecis.Span) []Span {
 	var in []Span
 	for _, t := range typed {
-		if (t.Type == "PERSON" || t.Type == "CODE") && t.Start < m.End && m.Start < t.End {
-			in = append(in, Span{max(t.Start, m.Start), min(t.End, m.End)})
+		if t.Type != "PERSON" && t.Type != "CODE" {
+			continue
 		}
+		// A passage the mask only clips belongs to a neighbouring mask.
+		s := Span{max(t.Start, m.Start), min(t.End, m.End)}
+		if 2*(s.End-s.Start) <= t.End-t.Start {
+			continue
+		}
+		// A passage cut inside a word takes the whole word, within the mask.
+		for s.Start > m.Start {
+			r, size := utf8.DecodeLastRuneInString(text[:s.Start])
+			if !isWordRune(r) {
+				break
+			}
+			s.Start -= size
+		}
+		for s.End < m.End {
+			r, size := utf8.DecodeRuneInString(text[s.End:])
+			if !isWordRune(r) {
+				break
+			}
+			s.End += size
+		}
+		in = append(in, s)
 	}
 	slices.SortFunc(in, func(a, b Span) int { return a.Start - b.Start })
+	// Passages that overlap, touch or are separated by signs without a
+	// space ("nadia.ferrand" and "@laposte.net") are one name or one
+	// identifier.
 	var owns []Span
 	for _, s := range in {
-		if n := len(owns); n > 0 && s.Start < owns[n-1].End {
+		if n := len(owns); n > 0 && (s.Start <= owns[n-1].End ||
+			!strings.ContainsFunc(text[owns[n-1].End:s.Start], unicode.IsSpace)) {
 			owns[n-1].End = max(owns[n-1].End, s.End)
 			continue
 		}
@@ -322,13 +353,20 @@ func split(text string, m Span, typed []indecis.Span) []Span {
 	start := m.Start
 	for i := range len(owns) - 1 {
 		pieces = append(pieces, Span{start, owns[i].End})
-		start = skipFiller(text, owns[i].End, owns[i+1].Start)
+		from := skipFiller(text, owns[i].End, owns[i+1].Start)
+		start = civility(text, from, owns[i+1].Start)
+		pieces = append(pieces, Span{from, start})
 	}
 	last := owns[len(owns)-1].End
 	pieces = append(pieces, Span{start, last}, Span{last, m.End})
-	// Refine trims the pieces and drops the gaps of function words; the
-	// pieces are not joined again.
-	return Refine(text, pieces, func(Span, Span) bool { return false })
+	var out []Span
+	for _, p := range pieces {
+		p = trimFiller(text, trim(text, p))
+		if p.Start < p.End && informative(text[p.Start:p.End]) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // skipFiller returns where the first word other than a function word
@@ -354,6 +392,59 @@ func skipFiller(text string, from, to int) int {
 		i = j
 	}
 	return to
+}
+
+// civility returns where the civility of the name at to starts: at most
+// two words other than function words right before it, separated by
+// spaces or a full stop after a word ("M. Paul"), not before from.
+func civility(text string, from, to int) int {
+	start := to
+	for range 2 {
+		i := start
+		for i > from {
+			r, size := utf8.DecodeLastRuneInString(text[:i])
+			if !unicode.IsSpace(r) {
+				break
+			}
+			i -= size
+		}
+		if r, size := utf8.DecodeLastRuneInString(text[:i]); i > from && r == '.' {
+			i -= size
+		}
+		j := i
+		for j > from {
+			r, size := utf8.DecodeLastRuneInString(text[:j])
+			if !isWordRune(r) {
+				break
+			}
+			j -= size
+		}
+		if j == i || FunctionWords[strings.ToLower(text[j:i])] {
+			break
+		}
+		start = j
+	}
+	return start
+}
+
+// trimFiller leaves the function words out of the end of a mask, and the
+// edges they uncover: "présidente, et" before a name becomes "présidente".
+func trimFiller(text string, s Span) Span {
+	for s.Start < s.End {
+		i := s.End
+		for i > s.Start {
+			r, size := utf8.DecodeLastRuneInString(text[:i])
+			if !isWordRune(r) {
+				break
+			}
+			i -= size
+		}
+		if i == s.End || !FunctionWords[strings.ToLower(text[i:s.End])] {
+			break
+		}
+		s = trim(text, Span{s.Start, i})
+	}
+	return s
 }
 
 // typeOf names a mask after the typed passage it overlaps most, MISC if

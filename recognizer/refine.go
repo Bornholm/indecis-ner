@@ -23,12 +23,14 @@ func init() {
 
 // Refine makes masks easier to trust: each mask cut inside a word grows
 // to the whole word ("[[é]]crasé" becomes "[[écrasé]]") and leaves out
-// the spaces and the punctuation of sentences at its edges; empty masks and masks made only of function
-// words or punctuation are dropped; masks separated only by spaces,
-// commas and function words are joined ("[magasinier] sur le [site]"
-// becomes one mask) when join allows it (nil: always), as are masks that
-// touch. Masks that overlap are merged whatever join says. Masks come
-// back sorted and disjoint.
+// the spaces, the punctuation of sentences and the unpaired brackets at
+// its edges (trim); empty masks and masks made only of function words or
+// punctuation are dropped; masks separated only by spaces, commas and
+// function words are joined ("[magasinier] sur le [site]" becomes one
+// mask) when join allows it (nil: always), as are masks that touch. A
+// comma left out of an edge thus still joins two masks, a full stop, a
+// semicolon or a colon does not. Masks that overlap are merged whatever
+// join says. Masks come back sorted and disjoint.
 func Refine(text string, spans []Span, join func(a, b Span) bool) []Span {
 	var out []Span
 	for _, s := range spans {
@@ -74,27 +76,7 @@ func Refine(text string, spans []Span, join func(a, b Span) bool) []Span {
 			}
 			s.End += size
 		}
-		// Spaces and the punctuation of sentences at the edges are left
-		// out: two masks that shared the space between them would
-		// overlap, and be merged whatever join says, and the full stop
-		// after a number is not part of it. Other signs stay masked, as
-		// the % of "80 %".
-		// So is a bracket whose partner is outside the mask: "(1 245,60 €)"
-		// masked as "1 245,60 €)" leaves "(" readable, and then ")".
-		for s.Start < s.End {
-			r, size := utf8.DecodeRuneInString(text[s.Start:])
-			if !edge(r) && !unpaired(text[s.Start:s.End], r) {
-				break
-			}
-			s.Start += size
-		}
-		for s.Start < s.End {
-			r, size := utf8.DecodeLastRuneInString(text[s.Start:s.End])
-			if !edge(r) && !unpaired(text[s.Start:s.End], r) {
-				break
-			}
-			s.End -= size
-		}
+		s = trim(text, s)
 		if s.Start < s.End && informative(text[s.Start:s.End]) {
 			out = append(out, s)
 		}
@@ -110,6 +92,30 @@ func Refine(text string, spans []Span, join func(a, b Span) bool) []Span {
 		merged = append(merged, s)
 	}
 	return merged
+}
+
+// trim leaves the spaces and the punctuation of sentences out of a
+// mask's edges: two masks that shared the space between them would
+// overlap, and be merged whatever join says, and the full stop after a
+// number is not part of it. Other signs stay masked, as the % of "80 %".
+// So is a bracket whose partner is outside the mask: "(1 245,60 €)"
+// masked as "1 245,60 €)" leaves "(" readable, and then ")".
+func trim(text string, s Span) Span {
+	for s.Start < s.End {
+		r, size := utf8.DecodeRuneInString(text[s.Start:])
+		if !edge(r) && !unpaired(text[s.Start:s.End], r) {
+			break
+		}
+		s.Start += size
+	}
+	for s.Start < s.End {
+		r, size := utf8.DecodeLastRuneInString(text[s.Start:s.End])
+		if !edge(r) && !unpaired(text[s.Start:s.End], r) {
+			break
+		}
+		s.End -= size
+	}
+	return s
 }
 
 func isWordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
