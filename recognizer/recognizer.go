@@ -289,8 +289,11 @@ func Masks(text string, found, typed, sensitive []indecis.Span) []Mask {
 	// Tanneurs" is an organisation and an address. The types compared are
 	// those of the items on either side of the comma (itemType), not of the
 	// whole masks: the left one may already hold a description of other
-	// types. An item of no type joins any, and the mask it joins keeps its
-	// type.
+	// types. An item of no type joins any: MISC stands for no type as well
+	// as for a passage typed MISC. The joined mask is then typed after its
+	// largest typed passage, and the item next to the following comma is
+	// the untyped one, so a list whose middle item has no type stays one
+	// mask.
 	listed := func(a, b Span) bool {
 		if !strings.Contains(text[a.End:b.Start], ",") {
 			return false
@@ -512,14 +515,25 @@ func trimFiller(text string, s Span) Span {
 // itemType returns the type of the typed passage at the start of s (or
 // at its end): the one that starts first (ends last) in s, MISC if there
 // is none, or if words other than function words lie between it and the
-// edge, which belong to no typed passage.
+// edge, which belong to no typed passage. A passage s holds half of or
+// less belongs to a neighbouring mask, as in split: one that runs past a
+// comma ("Clinique du Val de Saône, Ch") does not type the next item.
+// Passages that share the edge are ranked as in category, whatever the
+// order of the model's list.
 func itemType(text string, s Span, typed []indecis.Span, start bool) ner.EntityType {
+	// near is how near the edge a passage lies.
+	near := func(t indecis.Span) int {
+		if start {
+			return -t.Start
+		}
+		return t.End
+	}
 	var best *indecis.Span
 	for i, t := range typed {
-		if t.Start >= s.End || s.Start >= t.End {
+		if o := min(s.End, t.End) - max(s.Start, t.Start); 2*o <= t.End-t.Start {
 			continue
 		}
-		if best == nil || start && t.Start < best.Start || !start && t.End > best.End {
+		if best == nil || near(t) > near(*best) || near(t) == near(*best) && better(t, *best) {
 			best = &typed[i]
 		}
 	}
