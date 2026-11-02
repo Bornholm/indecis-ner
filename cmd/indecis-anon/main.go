@@ -13,11 +13,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -56,6 +58,16 @@ func main() {
 	threads := flag.Int("threads", 0, "cores (0: all)")
 	mappingOut := flag.String("save-mapping-insecure", "", "write the re-identification mapping IN CLEAR to this JSON file")
 	flag.Parse()
+
+	// Ctrl-C cancels the processing under way. Once it is cancelled, the
+	// default handler is back: a second Ctrl-C stops a step that does not
+	// watch the context (loading the model, writing a file).
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 	if *input == "" || *output == "" {
 		flag.Usage()
 		os.Exit(2)
@@ -86,7 +98,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		res, err := anon.Anonymize(string(text), anonOpts...)
+		res, err := anon.Anonymize(ctx, string(text), anonOpts...)
 		if err != nil {
 			log.Fatalf("anonymization: %v", err)
 		}
@@ -118,10 +130,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("opening %s: %v", *input, err)
 	}
-	if err := runOCR(walker, *ocrMode); err != nil {
+	if err := runOCR(ctx, walker, *ocrMode); err != nil {
 		log.Fatalf("OCR: %v", err)
 	}
-	session, report, err := proc.ProcessWithReport(walker, anonOpts...)
+	session, report, err := proc.ProcessWithReport(ctx, walker, anonOpts...)
 	if err != nil {
 		log.Fatalf("anonymization: %v", err) // strict: nothing written
 	}
@@ -140,22 +152,42 @@ func main() {
 			fmt.Fprintf(os.Stderr, "warning: surfaces not processed: %v\n", sr.Unprocessed)
 		}
 	}
-	saver, ok := walker.(interface{ SaveTo(string) error })
+	saver, ok := walker.(docprocessor.Saver)
 	if !ok {
 		log.Fatalf("this format cannot be saved")
 	}
-	if err := saver.SaveTo(*output); err != nil {
+	// The document is written beside the output, verified, then renamed: a
+	// failed or cancelled save or verification never leaves a document under
+	// the name asked for, nor removes a file that was already there.
+	tmp, err := os.CreateTemp(filepath.Dir(*output), ".indecis-anon-*"+filepath.Ext(*output))
+	if err != nil {
 		log.Fatalf("saving %s: %v", *output, err)
 	}
-	visual, err := proc.VerifyOutput(walker, *output, session)
+	tmp.Close()
+	written := tmp.Name()
+	if err := saver.SaveTo(ctx, written); err != nil {
+		os.Remove(written)
+		log.Fatalf("saving %s: %v", *output, err)
+	}
+	visual, err := proc.VerifyOutput(ctx, walker, written, session)
 	if err != nil {
+		os.Remove(written)
 		log.Fatalf("visual verification: %v", err)
 	}
+	if len(visual) > 0 && *strict {
+		os.Remove(written)
+		log.Fatalf("visual verification: %d passage(s) still readable, document destroyed", len(visual))
+	}
+	// os.CreateTemp gives 0600: the output keeps the mode a direct save had.
+	if err := os.Chmod(written, 0o644); err != nil {
+		os.Remove(written)
+		log.Fatalf("saving %s: %v", *output, err)
+	}
+	if err := os.Rename(written, *output); err != nil {
+		os.Remove(written)
+		log.Fatalf("saving %s: %v", *output, err)
+	}
 	if len(visual) > 0 {
-		if *strict {
-			os.Remove(*output)
-			log.Fatalf("visual verification: %d passage(s) still readable, document destroyed", len(visual))
-		}
 		fmt.Fprintf(os.Stderr, "WARNING: visual verification: %d passage(s) still readable in %s\n", len(visual), *output)
 	}
 	fmt.Printf("Anonymized: %s, %d passages replaced (%d occurrences)\n", *output, len(session.Mapping), report.TotalEntities())
@@ -192,12 +224,12 @@ func saveMapping(path string, mapping map[string]string) {
 }
 
 type ocrCapable interface {
-	RunOCR(pkgpdf.OCROptions) error
+	RunOCR(context.Context, pkgpdf.OCROptions) error
 }
 
 // runOCR is anon-doc's: bitmap content is read with Tesseract when it is
 // installed (auto), required with "on".
-func runOCR(walker docprocessor.Walker, mode string) error {
+func runOCR(ctx context.Context, walker docprocessor.Walker, mode string) error {
 	if mode == "off" {
 		return nil
 	}
@@ -208,10 +240,14 @@ func runOCR(walker docprocessor.Walker, mode string) error {
 		}
 		return nil
 	}
-	err := capable.RunOCR(pkgpdf.OCROptions{
+	err := capable.RunOCR(ctx, pkgpdf.OCROptions{
 		Engine: ocr.NewTesseractExec(), Rasterizer: pkgpdf.NewPdftoppmRasterizer(),
 		Lang: "fra", DPI: pkgpdf.DefaultDPI, VerifyEngine: ocr.NewTesseractExecSparse(),
 	})
+	// A cancellation is not an unavailable OCR: the processing stops.
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
 	if err != nil && mode == "on" {
 		return err
 	}

@@ -1,6 +1,7 @@
 package recognizer
 
 import (
+	"context"
 	"slices"
 	"strings"
 	"testing"
@@ -696,7 +697,7 @@ func TestFoundCategories(t *testing.T) {
 			got = append(got, f.Text+" "+f.Sensitive)
 		}
 	}
-	if _, err := r.Recognize(text); err != nil {
+	if _, err := r.Recognize(context.Background(), text); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"une lombalgie chronique HEALTH", "06 12 34 56 78 "}
@@ -741,7 +742,7 @@ func TestMinConfidenceSensitive(t *testing.T) {
 				got = append(got, f.Text+" "+f.Sensitive)
 			}
 		}
-		if _, err := r.Recognize(text); err != nil {
+		if _, err := r.Recognize(context.Background(), text); err != nil {
 			t.Fatal(err)
 		}
 		if !slices.Equal(got, c.want) {
@@ -775,7 +776,7 @@ func TestMinConfidenceTyped(t *testing.T) {
 				got = append(got, f.Text)
 			}
 		}
-		if _, err := r.Recognize(text); err != nil {
+		if _, err := r.Recognize(context.Background(), text); err != nil {
 			t.Fatal(err)
 		}
 		if !slices.Equal(got, c.want) {

@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"slices"
 	"sort"
 	"strings"
@@ -74,6 +75,16 @@ func main() {
 	showExtra := flag.Int("extra", 0, "print this many found passages that overlap no labeled one")
 	refine := flag.Bool("refine", false, "refine indecis masks as the go-anon adapter does (recognizer.Masks): grow the masks cut inside a word to the whole word and leave out the spaces, the punctuation of sentences and the unpaired brackets at their edges, cut a mask that holds several names or identifiers, drop function-word masks, join masks over function words when they hold the same special category, or none; with the sensitive question, also report the categories the masks keep; implies -merge")
 	flag.Parse()
+
+	// Ctrl-C cancels the processing under way. Once it is cancelled, the
+	// default handler is back: a second Ctrl-C stops a step that does not
+	// watch the context (loading the model, writing a file).
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 	novel := novelFlag
 	if *refine {
 		*merge = true
@@ -154,7 +165,7 @@ func main() {
 
 	var engines []engine
 	if *crfPath != "" {
-		e, err := crfEngine(*crfPath, *preset, *firstNames, *gazetteers, *clusters)
+		e, err := crfEngine(ctx, *crfPath, *preset, *firstNames, *gazetteers, *clusters)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -208,7 +219,7 @@ func main() {
 			}
 			for i, t := range texts {
 				// One text at a time, as a server would.
-				d, err := m.Decide(context.Background(), t)
+				d, err := m.Decide(ctx, t)
 				if err != nil {
 					return findings{}, err
 				}
@@ -325,7 +336,7 @@ func loadGazetteer(name, path string) (*features.Gazetteer, error) {
 	return features.LoadGazetteer(name, f)
 }
 
-func crfEngine(path, preset, firstNamesPath, gazetteers, clustersPath string) (engine, error) {
+func crfEngine(ctx context.Context, path, preset, firstNamesPath, gazetteers, clustersPath string) (engine, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return engine{}, err
@@ -387,7 +398,7 @@ func crfEngine(path, preset, firstNamesPath, gazetteers, clustersPath string) (e
 	return engine{name, func(texts []string) (findings, error) {
 		out := make([][]entity, len(texts))
 		for i, t := range texts {
-			ents, err := r.Recognize(t)
+			ents, err := r.Recognize(ctx, t)
 			if err != nil {
 				return findings{}, err
 			}
