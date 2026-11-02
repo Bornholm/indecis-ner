@@ -1,6 +1,8 @@
 package recognizer
 
 import (
+	"context"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -33,7 +35,7 @@ func TestAnonymizeWithIndecis(t *testing.T) {
 	r.Raw = true
 	a := anonymizer.New(r, anonymizer.Config{Strategy: anonymizer.TagReplace, ConsistentMap: true})
 	text := "Jean Dupont habite à Lyon depuis 2019. Écrivez-lui à jean.dupont@example.org ; Jean Dupont répondra."
-	res, err := a.Anonymize(text, anonymizer.WithStrictVerification())
+	res, err := a.Anonymize(context.Background(), text, anonymizer.WithStrictVerification())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +68,7 @@ func TestMaskWithIndecis(t *testing.T) {
 	r := New(m, []string{"mask", "sensitive"}, ner.RegexEntityFilter(ner.BuiltinRegexPatterns))
 	a := anonymizer.New(r, anonymizer.Config{Strategy: anonymizer.TagReplace, ConsistentMap: true})
 	text := "Bonjour Paul,\n\nKarima Benali, notre seule infirmière de nuit en pneumologie, sera absente jusqu'au 12 mars : elle accompagne son fils à ses séances de chimiothérapie. Son mari peut être joint au 06 12 34 56 78.\n\nBien à toi,\nSophie"
-	res, err := a.Anonymize(text, anonymizer.WithStrictVerification())
+	res, err := a.Anonymize(context.Background(), text, anonymizer.WithStrictVerification())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,5 +77,16 @@ func TestMaskWithIndecis(t *testing.T) {
 		if strings.Contains(res.Text, leak) {
 			t.Errorf("%q left in the text", leak)
 		}
+	}
+}
+
+// A cancelled context stops the reading: the model is not asked to decide.
+func TestRecognizeStopsOnACancelledContext(t *testing.T) {
+	r := New(model(t), []string{"entities"})
+	r.Raw = true
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := r.Recognize(ctx, "Jean Dupont habite à Lyon."); !errors.Is(err, context.Canceled) {
+		t.Errorf("Recognize = %v, want context.Canceled", err)
 	}
 }

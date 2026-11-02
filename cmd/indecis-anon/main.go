@@ -13,11 +13,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -56,6 +58,10 @@ func main() {
 	threads := flag.Int("threads", 0, "cores (0: all)")
 	mappingOut := flag.String("save-mapping-insecure", "", "write the re-identification mapping IN CLEAR to this JSON file")
 	flag.Parse()
+
+	// Ctrl-C cancels the processing under way.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 	if *input == "" || *output == "" {
 		flag.Usage()
 		os.Exit(2)
@@ -86,7 +92,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		res, err := anon.Anonymize(string(text), anonOpts...)
+		res, err := anon.Anonymize(ctx, string(text), anonOpts...)
 		if err != nil {
 			log.Fatalf("anonymization: %v", err)
 		}
@@ -118,10 +124,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("opening %s: %v", *input, err)
 	}
-	if err := runOCR(walker, *ocrMode); err != nil {
+	if err := runOCR(ctx, walker, *ocrMode); err != nil {
 		log.Fatalf("OCR: %v", err)
 	}
-	session, report, err := proc.ProcessWithReport(walker, anonOpts...)
+	session, report, err := proc.ProcessWithReport(ctx, walker, anonOpts...)
 	if err != nil {
 		log.Fatalf("anonymization: %v", err) // strict: nothing written
 	}
@@ -140,14 +146,14 @@ func main() {
 			fmt.Fprintf(os.Stderr, "warning: surfaces not processed: %v\n", sr.Unprocessed)
 		}
 	}
-	saver, ok := walker.(interface{ SaveTo(string) error })
+	saver, ok := walker.(docprocessor.Saver)
 	if !ok {
 		log.Fatalf("this format cannot be saved")
 	}
-	if err := saver.SaveTo(*output); err != nil {
+	if err := saver.SaveTo(ctx, *output); err != nil {
 		log.Fatalf("saving %s: %v", *output, err)
 	}
-	visual, err := proc.VerifyOutput(walker, *output, session)
+	visual, err := proc.VerifyOutput(ctx, walker, *output, session)
 	if err != nil {
 		log.Fatalf("visual verification: %v", err)
 	}
@@ -192,12 +198,12 @@ func saveMapping(path string, mapping map[string]string) {
 }
 
 type ocrCapable interface {
-	RunOCR(pkgpdf.OCROptions) error
+	RunOCR(context.Context, pkgpdf.OCROptions) error
 }
 
 // runOCR is anon-doc's: bitmap content is read with Tesseract when it is
 // installed (auto), required with "on".
-func runOCR(walker docprocessor.Walker, mode string) error {
+func runOCR(ctx context.Context, walker docprocessor.Walker, mode string) error {
 	if mode == "off" {
 		return nil
 	}
@@ -208,10 +214,14 @@ func runOCR(walker docprocessor.Walker, mode string) error {
 		}
 		return nil
 	}
-	err := capable.RunOCR(pkgpdf.OCROptions{
+	err := capable.RunOCR(ctx, pkgpdf.OCROptions{
 		Engine: ocr.NewTesseractExec(), Rasterizer: pkgpdf.NewPdftoppmRasterizer(),
 		Lang: "fra", DPI: pkgpdf.DefaultDPI, VerifyEngine: ocr.NewTesseractExecSparse(),
 	})
+	// A cancellation is not an unavailable OCR: the processing stops.
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
 	if err != nil && mode == "on" {
 		return err
 	}

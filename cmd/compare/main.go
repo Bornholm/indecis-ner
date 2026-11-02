@@ -387,7 +387,7 @@ func crfEngine(path, preset, firstNamesPath, gazetteers, clustersPath string) (e
 	return engine{name, func(texts []string) (findings, error) {
 		out := make([][]entity, len(texts))
 		for i, t := range texts {
-			ents, err := r.Recognize(t)
+			ents, err := r.Recognize(context.Background(), t)
 			if err != nil {
 				return findings{}, err
 			}
