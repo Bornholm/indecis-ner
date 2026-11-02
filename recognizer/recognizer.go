@@ -121,9 +121,13 @@ func (r *Recognizer) Document(ctx context.Context, paragraphs []string) error {
 	return nil
 }
 
-// Recognize implements anonymizer.Recognizer. ctx reaches the model's
-// decision, which stops when it is cancelled.
+// Recognize implements anonymizer.Recognizer. A cancelled ctx fails the call
+// on every path, a paragraph already decided by Document included; otherwise
+// it reaches the model's decision, which stops when it is cancelled.
 func (r *Recognizer) Recognize(ctx context.Context, text string) ([]ner.Entity, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if text == "" {
 		return []ner.Entity{}, nil
 	}

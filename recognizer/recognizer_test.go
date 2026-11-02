@@ -80,13 +80,16 @@ func TestMaskWithIndecis(t *testing.T) {
 	}
 }
 
-// A cancelled context stops the reading: the model is not asked to decide.
+// A cancelled context fails Recognize on every path, without the model: a
+// text to decide, and a paragraph already decided by Document.
 func TestRecognizeStopsOnACancelledContext(t *testing.T) {
-	r := New(model(t), []string{"entities"})
-	r.Raw = true
+	r := New(nil, []string{"entities"})
+	r.known = map[string][]decided{"Jean Dupont habite à Lyon.": {{}}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := r.Recognize(ctx, "Jean Dupont habite à Lyon."); !errors.Is(err, context.Canceled) {
-		t.Errorf("Recognize = %v, want context.Canceled", err)
+	for _, text := range []string{"Marie Martin travaille à Paris.", "Jean Dupont habite à Lyon.", ""} {
+		if _, err := r.Recognize(ctx, text); !errors.Is(err, context.Canceled) {
+			t.Errorf("Recognize(%q) = %v, want context.Canceled", text, err)
+		}
 	}
 }

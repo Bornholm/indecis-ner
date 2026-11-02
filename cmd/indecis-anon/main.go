@@ -59,9 +59,15 @@ func main() {
 	mappingOut := flag.String("save-mapping-insecure", "", "write the re-identification mapping IN CLEAR to this JSON file")
 	flag.Parse()
 
-	// Ctrl-C cancels the processing under way.
+	// Ctrl-C cancels the processing under way. Once it is cancelled, the
+	// default handler is back: a second Ctrl-C stops a step that does not
+	// watch the context (loading the model, writing a file).
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 	if *input == "" || *output == "" {
 		flag.Usage()
 		os.Exit(2)
@@ -151,10 +157,12 @@ func main() {
 		log.Fatalf("this format cannot be saved")
 	}
 	if err := saver.SaveTo(ctx, *output); err != nil {
+		removeUnverified(ctx, *output)
 		log.Fatalf("saving %s: %v", *output, err)
 	}
 	visual, err := proc.VerifyOutput(ctx, walker, *output, session)
 	if err != nil {
+		removeUnverified(ctx, *output)
 		log.Fatalf("visual verification: %v", err)
 	}
 	if len(visual) > 0 {
@@ -167,6 +175,15 @@ func main() {
 	fmt.Printf("Anonymized: %s, %d passages replaced (%d occurrences)\n", *output, len(session.Mapping), report.TotalEntities())
 	saveMapping(*mappingOut, session.Mapping)
 	session.Close()
+}
+
+// removeUnverified removes the output when the processing was cancelled
+// before its visual verification: a document cut short, or never verified,
+// must not stay under the name the user asked for.
+func removeUnverified(ctx context.Context, path string) {
+	if ctx.Err() != nil {
+		os.Remove(path)
+	}
 }
 
 func counts(ents []ner.Entity) string {
