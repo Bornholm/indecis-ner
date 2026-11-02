@@ -156,34 +156,43 @@ func main() {
 	if !ok {
 		log.Fatalf("this format cannot be saved")
 	}
-	if err := saver.SaveTo(ctx, *output); err != nil {
-		removeUnverified(ctx, *output)
+	// The document is written beside the output, verified, then renamed: a
+	// failed or cancelled save or verification never leaves a document under
+	// the name asked for, nor removes a file that was already there.
+	tmp, err := os.CreateTemp(filepath.Dir(*output), ".indecis-anon-*"+filepath.Ext(*output))
+	if err != nil {
 		log.Fatalf("saving %s: %v", *output, err)
 	}
-	visual, err := proc.VerifyOutput(ctx, walker, *output, session)
+	tmp.Close()
+	written := tmp.Name()
+	if err := saver.SaveTo(ctx, written); err != nil {
+		os.Remove(written)
+		log.Fatalf("saving %s: %v", *output, err)
+	}
+	visual, err := proc.VerifyOutput(ctx, walker, written, session)
 	if err != nil {
-		removeUnverified(ctx, *output)
+		os.Remove(written)
 		log.Fatalf("visual verification: %v", err)
 	}
+	if len(visual) > 0 && *strict {
+		os.Remove(written)
+		log.Fatalf("visual verification: %d passage(s) still readable, document destroyed", len(visual))
+	}
+	// os.CreateTemp gives 0600: the output keeps the mode a direct save had.
+	if err := os.Chmod(written, 0o644); err != nil {
+		os.Remove(written)
+		log.Fatalf("saving %s: %v", *output, err)
+	}
+	if err := os.Rename(written, *output); err != nil {
+		os.Remove(written)
+		log.Fatalf("saving %s: %v", *output, err)
+	}
 	if len(visual) > 0 {
-		if *strict {
-			os.Remove(*output)
-			log.Fatalf("visual verification: %d passage(s) still readable, document destroyed", len(visual))
-		}
 		fmt.Fprintf(os.Stderr, "WARNING: visual verification: %d passage(s) still readable in %s\n", len(visual), *output)
 	}
 	fmt.Printf("Anonymized: %s, %d passages replaced (%d occurrences)\n", *output, len(session.Mapping), report.TotalEntities())
 	saveMapping(*mappingOut, session.Mapping)
 	session.Close()
-}
-
-// removeUnverified removes the output when the processing was cancelled
-// before its visual verification: a document cut short, or never verified,
-// must not stay under the name the user asked for.
-func removeUnverified(ctx context.Context, path string) {
-	if ctx.Err() != nil {
-		os.Remove(path)
-	}
 }
 
 func counts(ents []ner.Entity) string {

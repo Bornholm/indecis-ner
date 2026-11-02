@@ -93,3 +93,37 @@ func TestRecognizeStopsOnACancelledContext(t *testing.T) {
 		}
 	}
 }
+
+// laterCancelled is a context that ends after its first check: Recognize's own
+// check lets the call through, and only the model's decision sees the end.
+type laterCancelled struct {
+	context.Context
+	checked bool
+}
+
+func (c *laterCancelled) Err() error {
+	if !c.checked {
+		c.checked = true
+		return nil
+	}
+	return context.Canceled
+}
+
+func (c *laterCancelled) Done() <-chan struct{} {
+	if !c.checked {
+		return nil
+	}
+	done := make(chan struct{})
+	close(done)
+	return done
+}
+
+// The context reaches the model's decision: a context that ends after
+// Recognize's own check stops the decision. Needs the model.
+func TestRecognizePassesTheContextToTheModel(t *testing.T) {
+	r := New(model(t), []string{"entities"})
+	r.Raw = true
+	if _, err := r.Recognize(&laterCancelled{Context: context.Background()}, "Jean Dupont habite à Lyon."); !errors.Is(err, context.Canceled) {
+		t.Errorf("Recognize = %v, want the decision to stop on context.Canceled", err)
+	}
+}
